@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Random Forest — Construção Árvore por Árvore</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #5f564b;
+      --accent: #e85d04;
+      --accent-2: #0a9396;
+      --accent-3: #7b2d8b;
+      --line: #d8cfc0;
+      --ok: #3a7d44;
+      --warn: #b34a1e;
+      --shadow: 0 10px 30px rgba(38,25,12,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans","Segoe UI",sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(232,93,4,0.14), transparent 30%),
+        radial-gradient(circle at 80% 5%, rgba(10,147,150,0.16), transparent 25%),
+        linear-gradient(160deg,#f8f5ee 0%,#f5f2ea 60%,#f0e8da 100%);
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+    .wrap {
+      width: min(1280px,95vw);
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 16px;
+      animation: fade-up 500ms ease;
+    }
+    @keyframes fade-up {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+    .hero {
+      background:
+        linear-gradient(130deg,rgba(232,93,4,0.08),rgba(10,147,150,0.08)),
+        var(--panel);
+    }
+    h1,h2,h3 { margin:0; font-family:"IBM Plex Serif",Georgia,serif; letter-spacing:0.2px; }
+    h1 { font-size:clamp(1.3rem,3vw,2rem); }
+    h2 { font-size:clamp(1.05rem,2vw,1.3rem); margin-bottom:10px; }
+    h3 { font-size:0.95rem; color:var(--muted); font-weight:600; margin-bottom:6px; }
+    .muted { color:var(--muted); font-size:0.93rem; }
+    .note  { font-size:0.81rem; color:var(--muted); margin-top:6px; }
+    .mono  { font-family:"IBM Plex Mono",Menlo,monospace; }
+
+    /* layout helpers */
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+
+    /* controls */
+    label { font-size:0.85rem; color:var(--muted); display:grid; gap:4px; }
+    input[type="number"],select {
+      border:1px solid var(--line); border-radius:8px; padding:7px 9px;
+      background:#fff; color:var(--ink); font-family:inherit; font-size:0.9rem; width:100%;
+    }
+    input[type="range"] { width:100%; accent-color:var(--accent); }
+    button {
+      border:0; border-radius:10px; padding:10px 14px;
+      font-weight:650; cursor:pointer; font-family:inherit; font-size:0.9rem;
+      transition:transform 130ms ease,opacity 130ms ease;
+    }
+    button:hover  { transform:translateY(-1px); }
+    button:active { transform:translateY(0); }
+    button:disabled { opacity:0.45; cursor:not-allowed; transform:none; }
+    .btn-main { background:var(--accent);   color:#fff; }
+    .btn-alt  { background:var(--accent-2); color:#fff; }
+    .btn-soft { background:#ece4d7; color:#2d2418; }
+
+    /* equation box */
+    .equation {
+      border-left:4px solid var(--accent); padding:7px 10px;
+      background:#fff7ef; border-radius:8px; margin-bottom:7px;
+      font-family:"IBM Plex Mono",Menlo,monospace;
+      font-size:0.87rem; overflow-x:auto; white-space:nowrap;
+    }
+    .equation.teal { border-color:var(--accent-2); background:#f0fafa; }
+
+    /* stat pills */
+    .pills { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:10px; margin-top:8px; }
+    .pill {
+      border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+      background:#fff; font-size:0.87rem;
+    }
+    .pill strong { display:block; font-size:0.93rem; margin-bottom:3px; }
+    .pill.ok strong { color:var(--ok); }
+    .pill.warn strong { color:var(--warn); }
+
+    /* canvas plots */
+    .plot {
+      width:100%; height:320px; border-radius:10px;
+      border:1px solid var(--line);
+      background:linear-gradient(180deg,#ffffff 0%,#fdf8ef 100%);
+      display:block;
+    }
+    .plot-sm { height:220px; }
+
+    /* legend */
+    .legend {
+      display:flex; gap:12px; flex-wrap:wrap;
+      margin-top:6px; font-size:0.82rem; color:var(--muted);
+    }
+    .dot {
+      width:10px; height:10px; border-radius:50%;
+      display:inline-block; margin-right:4px; vertical-align:middle;
+    }
+    .dash {
+      display:inline-block; width:18px; height:3px;
+      border-radius:2px; margin-right:4px; vertical-align:middle;
+    }
+
+    /* tree gallery */
+    #treeGallery {
+      display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; min-height:36px;
+    }
+    .tree-badge {
+      display:inline-flex; align-items:center; gap:5px;
+      border:1px solid var(--line); border-radius:8px; padding:4px 10px;
+      font-size:0.8rem; background:#fff; cursor:pointer;
+      transition:border-color 150ms, background 150ms;
+    }
+    .tree-badge:hover  { border-color:var(--accent); }
+    .tree-badge.active { border-color:var(--accent); background:#fff7ef; font-weight:700; }
+    .tree-badge .acc   { color:var(--ok); font-weight:700; }
+
+    /* feature importance bars */
+    .fi-bar-wrap { display:grid; gap:8px; margin-top:4px; }
+    .fi-row { display:grid; grid-template-columns:110px 1fr 52px; align-items:center; gap:8px; font-size:0.85rem; }
+    .fi-bar-bg { background:#ece4d7; border-radius:6px; height:14px; overflow:hidden; }
+    .fi-bar    { background:var(--accent-2); height:100%; border-radius:6px; transition:width 400ms ease; }
+    .fi-val    { text-align:right; color:var(--muted); font-size:0.82rem; font-family:"IBM Plex Mono",Menlo,monospace; }
+
+    /* table */
+    table { border-collapse:collapse; width:100%; font-size:0.84rem; background:#fff; }
+    th,td { border:1px solid var(--line); padding:5px 8px; text-align:right; }
+    th { background:#f4efe5; font-weight:700; color:#3b3024; }
+    td:first-child,th:first-child { text-align:center; }
+    .table-wrap { max-height:260px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+
+    /* back link */
+    .back { font-size:0.85rem; }
+    .back a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .back a:hover { text-decoration:underline; }
+
+    @media (max-width:980px) {
+      .grid-2,.grid-4 { grid-template-columns:1fr; }
+      .pills { grid-template-columns:1fr 1fr; }
+    }
+    @media (max-width:620px) {
+      .grid-3 { grid-template-columns:1fr; }
+      .pills  { grid-template-columns:1fr; }
+      .plot   { height:240px; }
+    }
+  </style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="card hero">
+    <p class="back"><a href="../index.html">← Voltar ao índice</a></p>
+    <h1>Random Forest — Construção Árvore por Árvore</h1>
+    <p class="muted">
+      Adicione uma árvore por vez e observe como a acurácia do ensemble e o OOB error evoluem.
+      Explore também a importância de cada feature acumulada pela floresta.
+    </p>
+  </section>
+
+  <!-- CONCEITOS -->
+  <section class="card">
+    <h2>1) Conceitos-chave</h2>
+    <div class="grid-2">
+      <div>
+        <h3>Bootstrap &amp; Bagging</h3>
+        <div class="equation">Bootstrap sample: n amostras com reposição de D</div>
+        <div class="equation">Out-of-Bag (OOB) ≈ 36,8 % dos dados ficam fora</div>
+        <div class="equation">OOB Error = 1 − (acertos OOB / total OOB)</div>
+        <div class="equation">ŷ_ensemble = moda( ŷ_1, ŷ_2, ..., ŷ_T )</div>
+      </div>
+      <div>
+        <h3>Importância de Feature (Mean Decrease Impurity)</h3>
+        <div class="equation teal">Gini(t) = 1 − Σ p_k²</div>
+        <div class="equation teal">ΔImpurity(f,t) = impurity(t) − w_L·impurity(t_L) − w_R·impurity(t_R)</div>
+        <div class="equation teal">FI(f) = (1/T) · Σ_t Σ_{nós com f} ΔImpurity(f,t)</div>
+        <div class="equation teal">FI normalizada: FI(f) / Σ FI(f')</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTROLES -->
+  <section class="card">
+    <h2>2) Dataset &amp; Parâmetros da Floresta</h2>
+    <div class="grid-3" style="margin-bottom:12px">
+      <label>
+        Dataset
+        <select id="datasetSel">
+          <option value="iris">Iris (4 features, 3 classes)</option>
+          <option value="moons">Luas (2 features, 2 classes)</option>
+          <option value="circles">Círculos (2 features, 2 classes)</option>
+          <option value="xor">XOR (2 features, 2 classes)</option>
+        </select>
+      </label>
+      <label>
+        Max features por split
+        <select id="maxFeat">
+          <option value="sqrt" selected>sqrt(n_features)</option>
+          <option value="log2">log2(n_features)</option>
+          <option value="all">Todas (sem aleatoriedade)</option>
+        </select>
+      </label>
+      <label>
+        Profundidade máxima
+        <select id="maxDepth">
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="4">4</option>
+          <option value="99">Sem limite</option>
+        </select>
+      </label>
+    </div>
+    <div class="grid-4">
+      <button class="btn-main" id="btnAddOne">+ Adicionar 1 árvore</button>
+      <button class="btn-alt"  id="btnAdd10" >+ Adicionar 10 árvores</button>
+      <button class="btn-alt"  id="btnAdd50" >+ Adicionar 50 árvores</button>
+      <button class="btn-soft" id="btnReset"  >Resetar floresta</button>
+    </div>
+    <p class="note">
+      Cada clique em "+ Adicionar" treina uma nova árvore de decisão com uma amostra bootstrap e um subconjunto aleatório de features em cada split.
+      Os dados OOB (não usados no treino) são usados para estimar o erro sem precisar de validação separada.
+    </p>
+  </section>
+
+  <!-- MÉTRICAS -->
+  <section class="card">
+    <h2>3) Métricas do Ensemble</h2>
+    <div class="pills">
+      <div class="pill ok">
+        <strong>Árvores</strong>
+        <span id="pillTrees" class="mono">0</span>
+      </div>
+      <div class="pill ok">
+        <strong>Acurácia Ensemble</strong>
+        <span id="pillAcc" class="mono">—</span>
+      </div>
+      <div class="pill warn">
+        <strong>OOB Error</strong>
+        <span id="pillOOB" class="mono">—</span>
+      </div>
+      <div class="pill">
+        <strong>Última árvore (acc)</strong>
+        <span id="pillLastTree" class="mono">—</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- GRÁFICO EVOLUÇÃO -->
+  <section class="card grid-2">
+    <div>
+      <h2>4) Evolução: Acurácia &amp; OOB Error</h2>
+      <canvas id="cvEvolution" class="plot" width="620" height="320"></canvas>
+      <div class="legend">
+        <span><span class="dash" style="background:var(--ok)"></span>Acurácia Ensemble</span>
+        <span><span class="dash" style="background:var(--warn)"></span>OOB Error</span>
+        <span><span class="dash" style="background:#aaa; border-top:2px dashed #aaa; height:0"></span>Última árvore (acc)</span>
+      </div>
+      <p class="note">A acurácia sobe e o OOB error cai conforme mais árvores são adicionadas — efeito de bagging.</p>
+    </div>
+    <div>
+      <h2>5) Importância das Features</h2>
+      <div id="fiContainer" class="fi-bar-wrap" style="margin-top:14px">
+        <p class="muted" style="font-size:0.87rem">Adicione árvores para ver a importância acumulada.</p>
+      </div>
+      <p class="note">Média da redução de impureza (Gini) normalizada sobre todas as árvores da floresta.</p>
+    </div>
+  </section>
+
+  <!-- GALERIA + FRONTEIRA -->
+  <section class="card grid-2">
+    <div>
+      <h2>6) Fronteira de Decisão do Ensemble</h2>
+      <canvas id="cvBoundary" class="plot" width="620" height="320"></canvas>
+      <div class="legend" id="boundaryLegend"></div>
+      <p class="note" id="boundaryNote">Disponível apenas para datasets com 2 features. Para Iris, exibe as duas primeiras features.</p>
+    </div>
+    <div>
+      <h2>7) Galeria de Árvores</h2>
+      <div id="treeGallery"></div>
+      <p class="note" style="margin-bottom:10px">Clique em uma árvore para ver sua fronteira individual abaixo.</p>
+      <canvas id="cvSingle" class="plot plot-sm" width="620" height="220"></canvas>
+      <div class="legend" id="singleLegend"></div>
+      <p class="note" id="singleNote" style="margin-top:4px"></p>
+    </div>
+  </section>
+
+  <!-- HISTÓRICO -->
+  <section class="card">
+    <h2>8) Histórico de Árvores Adicionadas</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Amostras bootstrap</th>
+            <th>Acurácia individual</th>
+            <th>Acurácia OOB (árvore)</th>
+            <th>Acurácia Ensemble</th>
+            <th>OOB Error Ensemble</th>
+          </tr>
+        </thead>
+        <tbody id="tblBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────
+//  DATASETS
+// ─────────────────────────────────────────────
+const DATASETS = {
+  iris: buildIris(),
+  moons: buildMoons(300),
+  circles: buildCircles(300),
+  xor: buildXOR(300)
+};
+
+function buildIris() {
+  // Fisher Iris — embedded (150 samples, 4 features)
+  const raw = [
+    [5.1,3.5,1.4,0.2,0],[4.9,3.0,1.4,0.2,0],[4.7,3.2,1.3,0.2,0],[4.6,3.1,1.5,0.2,0],[5.0,3.6,1.4,0.2,0],
+    [5.4,3.9,1.7,0.4,0],[4.6,3.4,1.4,0.3,0],[5.0,3.4,1.5,0.2,0],[4.4,2.9,1.4,0.2,0],[4.9,3.1,1.5,0.1,0],
+    [5.4,3.7,1.5,0.2,0],[4.8,3.4,1.6,0.2,0],[4.8,3.0,1.4,0.1,0],[4.3,3.0,1.1,0.1,0],[5.8,4.0,1.2,0.2,0],
+    [5.7,4.4,1.5,0.4,0],[5.4,3.9,1.3,0.4,0],[5.1,3.5,1.4,0.3,0],[5.7,3.8,1.7,0.3,0],[5.1,3.8,1.5,0.3,0],
+    [5.4,3.4,1.7,0.2,0],[5.1,3.7,1.5,0.4,0],[4.6,3.6,1.0,0.2,0],[5.1,3.3,1.7,0.5,0],[4.8,3.4,1.9,0.2,0],
+    [5.0,3.0,1.6,0.2,0],[5.0,3.4,1.6,0.4,0],[5.2,3.5,1.5,0.2,0],[5.2,3.4,1.4,0.2,0],[4.7,3.2,1.6,0.2,0],
+    [4.8,3.1,1.6,0.2,0],[5.4,3.4,1.5,0.4,0],[5.2,4.1,1.5,0.1,0],[5.5,4.2,1.4,0.2,0],[4.9,3.1,1.5,0.2,0],
+    [5.0,3.2,1.2,0.2,0],[5.5,3.5,1.3,0.2,0],[4.9,3.6,1.4,0.1,0],[4.4,3.0,1.3,0.2,0],[5.1,3.4,1.5,0.2,0],
+    [5.0,3.5,1.3,0.3,0],[4.5,2.3,1.3,0.3,0],[4.4,3.2,1.3,0.2,0],[5.0,3.5,1.6,0.6,0],[5.1,3.8,1.9,0.4,0],
+    [4.8,3.0,1.4,0.3,0],[5.1,3.8,1.6,0.2,0],[4.6,3.2,1.4,0.2,0],[5.3,3.7,1.5,0.2,0],[5.0,3.3,1.4,0.2,0],
+    [7.0,3.2,4.7,1.4,1],[6.4,3.2,4.5,1.5,1],[6.9,3.1,4.9,1.5,1],[5.5,2.3,4.0,1.3,1],[6.5,2.8,4.6,1.5,1],
+    [5.7,2.8,4.5,1.3,1],[6.3,3.3,4.7,1.6,1],[4.9,2.4,3.3,1.0,1],[6.6,2.9,4.6,1.3,1],[5.2,2.7,3.9,1.4,1],
+    [5.0,2.0,3.5,1.0,1],[5.9,3.0,4.2,1.5,1],[6.0,2.2,4.0,1.0,1],[6.1,2.9,4.7,1.4,1],[5.6,2.9,3.6,1.3,1],
+    [6.7,3.1,4.4,1.4,1],[5.6,3.0,4.5,1.5,1],[5.8,2.7,4.1,1.0,1],[6.2,2.2,4.5,1.5,1],[5.6,2.5,3.9,1.1,1],
+    [5.9,3.2,4.8,1.8,1],[6.1,2.8,4.0,1.3,1],[6.3,2.5,4.9,1.5,1],[6.1,2.8,4.7,1.2,1],[6.4,2.9,4.3,1.3,1],
+    [6.6,3.0,4.4,1.4,1],[6.8,2.8,4.8,1.4,1],[6.7,3.0,5.0,1.7,1],[6.0,2.9,4.5,1.5,1],[5.7,2.6,3.5,1.0,1],
+    [5.5,2.4,3.8,1.1,1],[5.5,2.4,3.7,1.0,1],[5.8,2.7,3.9,1.2,1],[6.0,2.7,5.1,1.6,1],[5.4,3.0,4.5,1.5,1],
+    [6.0,3.4,4.5,1.6,1],[6.7,3.1,4.7,1.5,1],[6.3,2.3,4.4,1.3,1],[5.6,3.0,4.1,1.3,1],[5.5,2.5,4.0,1.3,1],
+    [5.5,2.6,4.4,1.2,1],[6.1,3.0,4.6,1.4,1],[5.8,2.6,4.0,1.2,1],[5.0,2.3,3.3,1.0,1],[5.6,2.7,4.2,1.3,1],
+    [5.7,3.0,4.2,1.2,1],[5.7,2.9,4.2,1.3,1],[6.2,2.9,4.3,1.3,1],[5.1,2.5,3.0,1.1,1],[5.7,2.8,4.1,1.3,1],
+    [6.3,3.3,6.0,2.5,2],[5.8,2.7,5.1,1.9,2],[7.1,3.0,5.9,2.1,2],[6.3,2.9,5.6,1.8,2],[6.5,3.0,5.8,2.2,2],
+    [7.6,3.0,6.6,2.1,2],[4.9,2.5,4.5,1.7,2],[7.3,2.9,6.3,1.8,2],[6.7,2.5,5.8,1.8,2],[7.2,3.6,6.1,2.5,2],
+    [6.5,3.2,5.1,2.0,2],[6.4,2.7,5.3,1.9,2],[6.8,3.0,5.5,2.1,2],[5.7,2.5,5.0,2.0,2],[5.8,2.8,5.1,2.4,2],
+    [6.4,3.2,5.3,2.3,2],[6.5,3.0,5.5,1.8,2],[7.7,3.8,6.7,2.2,2],[7.7,2.6,6.9,2.3,2],[6.0,2.2,5.0,1.5,2],
+    [6.9,3.2,5.7,2.3,2],[5.6,2.8,4.9,2.0,2],[7.7,2.8,6.7,2.0,2],[6.3,2.7,4.9,1.8,2],[6.7,3.3,5.7,2.1,2],
+    [7.2,3.2,6.0,1.8,2],[6.2,2.8,4.8,1.8,2],[6.1,3.0,4.9,1.8,2],[6.4,2.8,5.6,2.1,2],[7.2,3.0,5.8,1.6,2],
+    [7.4,2.8,6.1,1.9,2],[7.9,3.8,6.4,2.0,2],[6.4,2.8,5.6,2.2,2],[6.3,2.8,5.1,1.5,2],[6.1,2.6,5.6,1.4,2],
+    [7.7,3.0,6.1,2.3,2],[6.3,3.4,5.6,2.4,2],[6.4,3.1,5.5,1.8,2],[6.0,3.0,4.8,1.8,2],[6.9,3.1,5.4,2.1,2],
+    [6.7,3.1,5.6,2.4,2],[6.9,3.1,5.1,2.3,2],[5.8,2.7,5.1,1.9,2],[6.8,3.2,5.9,2.3,2],[6.7,3.3,5.7,2.5,2],
+    [6.7,3.0,5.2,2.3,2],[6.3,2.5,5.0,1.9,2],[6.5,3.0,5.2,2.0,2],[6.2,3.4,5.4,2.3,2],[5.9,3.0,5.1,1.8,2]
+  ];
+  const X = raw.map(r => r.slice(0,4));
+  const y = raw.map(r => r[4]);
+  return { X, y, featureNames:['sepal length','sepal width','petal length','petal width'], classNames:['Setosa','Versicolor','Virginica'] };
+}
+
+function rng(seed) {
+  let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+  return () => { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+}
+
+function buildMoons(n) {
+  const rand = rng(42); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const h = i < n/2;
+    const a = rand()*Math.PI;
+    const nx = (h ? Math.cos(a) : 1-Math.cos(a)) + (rand()-0.5)*0.35;
+    const ny = (h ? Math.sin(a) : -Math.sin(a)+0.5) + (rand()-0.5)*0.35;
+    X.push([nx,ny]); y.push(h?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Lua A','Lua B'] };
+}
+
+function buildCircles(n) {
+  const rand = rng(7); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const inner = i < n/2;
+    const a = rand()*2*Math.PI;
+    const r = (inner ? 0.4 : 1.0) + (rand()-0.5)*0.12;
+    X.push([r*Math.cos(a), r*Math.sin(a)]); y.push(inner?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Interno','Externo'] };
+}
+
+function buildXOR(n) {
+  const rand = rng(13); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const x1 = rand()*2-1, x2 = rand()*2-1;
+    X.push([x1,x2]); y.push((x1*x2>0)?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Quadrante +','Quadrante −'] };
+}
+
+// ─────────────────────────────────────────────
+//  DECISION TREE (CART, Gini)
+// ─────────────────────────────────────────────
+function gini(labels) {
+  if (!labels.length) return 0;
+  const counts = {};
+  for (const l of labels) counts[l] = (counts[l]||0)+1;
+  let g = 1;
+  for (const k in counts) { const p = counts[k]/labels.length; g -= p*p; }
+  return g;
+}
+
+function majorityClass(labels) {
+  const counts = {};
+  for (const l of labels) counts[l] = (counts[l]||0)+1;
+  return +Object.keys(counts).reduce((a,b) => counts[a]>counts[b]?a:b);
+}
+
+function buildTree(X, y, maxDepth, featureSubset) {
+  function split(indices, depth) {
+    const labels = indices.map(i=>y[i]);
+    const node = { indices, classVal: majorityClass(labels), gini: gini(labels) };
+    if (depth >= maxDepth || node.gini < 1e-9 || indices.length < 2) return node;
+    let bestGain = -Infinity, bestFeat = -1, bestThresh = 0, bestL=[], bestR=[];
+    for (const f of featureSubset) {
+      const vals = indices.map(i=>X[i][f]).sort((a,b)=>a-b);
+      const thresholds = [...new Set(vals.map((v,j) => j>0 ? (v+vals[j-1])/2 : null).filter(v=>v!==null))];
+      for (const thr of thresholds) {
+        const L = indices.filter(i=>X[i][f]<=thr);
+        const R = indices.filter(i=>X[i][f]> thr);
+        if (!L.length || !R.length) continue;
+        const gain = node.gini
+          - (L.length/indices.length)*gini(L.map(i=>y[i]))
+          - (R.length/indices.length)*gini(R.map(i=>y[i]));
+        if (gain > bestGain) { bestGain=gain; bestFeat=f; bestThresh=thr; bestL=L; bestR=R; }
+      }
+    }
+    if (bestFeat < 0) return node;
+    node.feat = bestFeat; node.thresh = bestThresh; node.gain = bestGain;
+    node.left  = split(bestL, depth+1);
+    node.right = split(bestR, depth+1);
+    return node;
+  }
+  return split([...Array(X.length).keys()], 0);
+}
+
+function treePredict(node, x) {
+  if (node.feat === undefined) return node.classVal;
+  return x[node.feat] <= node.thresh ? treePredict(node.left,x) : treePredict(node.right,x);
+}
+
+function treeFeatureImportance(node, nFeatures) {
+  const fi = new Array(nFeatures).fill(0);
+  function walk(n) {
+    if (n.feat === undefined) return;
+    fi[n.feat] += n.gain * n.indices.length;
+    walk(n.left); walk(n.right);
+  }
+  walk(node);
+  const total = fi.reduce((a,b)=>a+b, 0);
+  return total > 0 ? fi.map(v=>v/total) : fi;
+}
+
+// ─────────────────────────────────────────────
+//  FOREST STATE
+// ─────────────────────────────────────────────
+let forest = [];   // [{tree, bootstrapIdx, oobIdx, singleAcc, oobAcc}]
+let history = [];  // [{nTrees, ensAcc, oobErr, singleAcc}]
+let cumFI = [];    // accumulated (unnormalized) feature importances
+let selectedTree = -1;
+let ds, seedCounter = 1;
+
+function currentDataset() {
+  return DATASETS[document.getElementById('datasetSel').value];
+}
+
+function getMaxDepth() { return +document.getElementById('maxDepth').value; }
+
+function getFeatureSubset(nFeat) {
+  const mode = document.getElementById('maxFeat').value;
+  const k = mode==='sqrt' ? Math.max(1,Math.round(Math.sqrt(nFeat)))
+           : mode==='log2' ? Math.max(1,Math.round(Math.log2(nFeat)))
+           : nFeat;
+  const rand = rng(seedCounter * 9973 + 1);
+  const indices = [...Array(nFeat).keys()];
+  for (let i=nFeat-1;i>0;i--) { const j=Math.floor(rand()*(i+1)); [indices[i],indices[j]]=[indices[j],indices[i]]; }
+  return indices.slice(0,k);
+}
+
+function bootstrapSample(n) {
+  const rand = rng(seedCounter * 31337);
+  const idx = [];
+  for (let i=0;i<n;i++) idx.push(Math.floor(rand()*n));
+  const inBag = new Set(idx);
+  const oob   = [...Array(n).keys()].filter(i=>!inBag.has(i));
+  return { idx, oob };
+}
+
+function addTree(n=1) {
+  ds = currentDataset();
+  const { X, y, featureNames } = ds;
+  const maxDepth = getMaxDepth();
+  if (cumFI.length !== featureNames.length) cumFI = new Array(featureNames.length).fill(0);
+
+  for (let t=0;t<n;t++) {
+    seedCounter++;
+    const { idx: bootIdx, oob: oobIdx } = bootstrapSample(X.length);
+    const Xb = bootIdx.map(i=>X[i]);
+    const yb = bootIdx.map(i=>y[i]);
+    const featSub = getFeatureSubset(featureNames.length);
+    const tree = buildTree(Xb, yb, maxDepth, featSub);
+
+    // individual accuracy on all data
+    const preds = X.map(x=>treePredict(tree,x));
+    const singleAcc = preds.filter((p,i)=>p===y[i]).length / X.length;
+
+    // OOB accuracy
+    let oobAcc = NaN;
+    if (oobIdx.length > 0) {
+      const oobPreds = oobIdx.map(i=>treePredict(tree,X[i]));
+      oobAcc = oobPreds.filter((p,j)=>p===y[oobIdx[j]]).length / oobIdx.length;
+    }
+
+    // accumulate FI
+    const fi = treeFeatureImportance(tree, featureNames.length);
+    for (let f=0;f<featureNames.length;f++) cumFI[f] += fi[f];
+
+    forest.push({ tree, bootIdx, oobIdx, singleAcc, oobAcc, featSub });
+  }
+
+  // ensemble accuracy (majority vote)
+  const { X: X2, y: y2 } = ds;
+  const votes = X2.map((_,i) => {
+    const v = {};
+    for (const { tree } of forest) { const p=treePredict(tree,X2[i]); v[p]=(v[p]||0)+1; }
+    return +Object.keys(v).reduce((a,b)=>v[a]>v[b]?a:b);
+  });
+  const ensAcc = votes.filter((p,i)=>p===y2[i]).length / X2.length;
+
+  // OOB error: each sample predicted by trees that didn't see it
+  const oobVotes = X2.map(()=>({}));
+  for (const { tree, oobIdx } of forest) {
+    for (const i of oobIdx) { const p=treePredict(tree,X2[i]); oobVotes[i][p]=(oobVotes[i][p]||0)+1; }
+  }
+  let oobCorrect=0, oobTotal=0;
+  for (let i=0;i<X2.length;i++) {
+    if (!Object.keys(oobVotes[i]).length) continue;
+    const pred = +Object.keys(oobVotes[i]).reduce((a,b)=>oobVotes[i][a]>oobVotes[i][b]?a:b);
+    if (pred === y2[i]) oobCorrect++;
+    oobTotal++;
+  }
+  const oobErr = oobTotal > 0 ? 1 - oobCorrect/oobTotal : NaN;
+
+  history.push({ nTrees: forest.length, ensAcc, oobErr, singleAcc: forest[forest.length-1].singleAcc });
+  renderAll();
+}
+
+function resetForest() {
+  forest=[]; history=[]; cumFI=[]; selectedTree=-1; seedCounter=1;
+  renderAll();
+}
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+const COLORS = ['#e85d04','#0a9396','#7b2d8b','#f4a261','#2a9d8f','#e63946'];
+
+function renderAll() {
+  renderPills();
+  renderEvolutionChart();
+  renderFeatureImportance();
+  renderBoundary(document.getElementById('cvBoundary'), forest, true);
+  renderGallery();
+  renderTable();
+}
+
+function renderPills() {
+  const n = forest.length;
+  document.getElementById('pillTrees').textContent = n;
+  if (!n) {
+    document.getElementById('pillAcc').textContent = '—';
+    document.getElementById('pillOOB').textContent = '—';
+    document.getElementById('pillLastTree').textContent = '—';
+    return;
+  }
+  const last = history[history.length-1];
+  document.getElementById('pillAcc').textContent = (last.ensAcc*100).toFixed(1)+'%';
+  document.getElementById('pillOOB').textContent = isNaN(last.oobErr) ? '—' : (last.oobErr*100).toFixed(1)+'%';
+  document.getElementById('pillLastTree').textContent = (last.singleAcc*100).toFixed(1)+'%';
+}
+
+function renderEvolutionChart() {
+  const cv = document.getElementById('cvEvolution');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || cv.width;
+  const H = cv.clientHeight * devicePixelRatio || cv.height;
+  cv.width = W; cv.height = H;
+  ctx.clearRect(0,0,W,H);
+  const pad = { t:24, r:20, b:40, l:50 };
+  const pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = '#ece4d7'; ctx.lineWidth = 1;
+
+  // grid
+  for (let v=0;v<=1;v+=0.2) {
+    const gy = pad.t + ph*(1-v);
+    ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(pad.l+pw,gy); ctx.stroke();
+    ctx.fillStyle='#aaa'; ctx.font=`${11*devicePixelRatio}px IBM Plex Mono,monospace`;
+    ctx.textAlign='right'; ctx.fillText((v*100).toFixed(0)+'%', pad.l-6, gy+4);
+  }
+
+  if (!history.length) return;
+  const maxN = history[history.length-1].nTrees;
+
+  function xOf(n) { return pad.l + (n-1)/(Math.max(maxN,1)-1||1)*pw || pad.l; }
+  function yOf(v) { return pad.t + ph*(1-v); }
+  if (history.length === 1) {
+    // single point — draw dots
+    const h = history[0];
+    [[h.ensAcc, '#3a7d44'],[1-h.oobErr,'#b34a1e'],[h.singleAcc,'#bbb']].forEach(([v,c])=>{
+      if (isNaN(v)) return;
+      ctx.beginPath(); ctx.arc(pad.l, yOf(v), 4, 0, 2*Math.PI);
+      ctx.fillStyle=c; ctx.fill();
+    });
+  } else {
+    const series = [
+      { key:'ensAcc',   color:'#3a7d44', label:'Acurácia Ensemble', dash:[] },
+      { key:'oobErr',   color:'#b34a1e', label:'OOB Error', dash:[], transform: v=>1-v },
+      { key:'singleAcc',color:'#bbb',    label:'Última árvore', dash:[6,4] },
+    ];
+    for (const s of series) {
+      ctx.beginPath(); ctx.strokeStyle=s.color; ctx.lineWidth=2*devicePixelRatio;
+      ctx.setLineDash(s.dash.map(x=>x*devicePixelRatio));
+      history.forEach((h,i) => {
+        const v = s.transform ? s.transform(h[s.key]) : h[s.key];
+        if (isNaN(v)) return;
+        const x = history.length===1 ? pad.l : pad.l + i/(history.length-1)*pw;
+        i===0 ? ctx.moveTo(x,yOf(v)) : ctx.lineTo(x,yOf(v));
+      });
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+  }
+  // x-axis label
+  ctx.fillStyle='#888'; ctx.font=`${10*devicePixelRatio}px IBM Plex Sans,sans-serif`; ctx.textAlign='center';
+  ctx.fillText('Número de árvores', pad.l+pw/2, H-6);
+  // ticks
+  const step = Math.max(1, Math.floor(maxN/5));
+  for (let n=1;n<=maxN;n+=step) {
+    const x = history.length===1 ? pad.l : pad.l + (n-1)/(maxN-1||1)*pw;
+    ctx.fillStyle='#888'; ctx.textAlign='center';
+    ctx.fillText(n, x, H-pad.b+14);
+  }
+}
+
+function renderFeatureImportance() {
+  const { featureNames } = currentDataset();
+  const container = document.getElementById('fiContainer');
+  if (!forest.length) {
+    container.innerHTML = '<p class="muted" style="font-size:0.87rem">Adicione árvores para ver a importância acumulada.</p>';
+    return;
+  }
+  const total = cumFI.reduce((a,b)=>a+b,0);
+  const norm = total > 0 ? cumFI.map(v=>v/total) : cumFI.map(()=>1/featureNames.length);
+  const order = [...Array(featureNames.length).keys()].sort((a,b)=>norm[b]-norm[a]);
+  container.innerHTML = order.map(f => `
+    <div class="fi-row">
+      <span style="font-size:0.83rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${featureNames[f]}">${featureNames[f]}</span>
+      <div class="fi-bar-bg"><div class="fi-bar" style="width:${(norm[f]*100).toFixed(1)}%"></div></div>
+      <span class="fi-val">${(norm[f]*100).toFixed(1)}%</span>
+    </div>`).join('');
+}
+
+function get2DData() {
+  const { X, y, classNames } = currentDataset();
+  // use first 2 features
+  return { X2: X.map(x=>[x[0],x[1]]), y, classNames };
+}
+
+function renderBoundary(cv, trees, isEnsemble) {
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || cv.width;
+  const H = cv.clientHeight * devicePixelRatio || cv.height;
+  cv.width = W; cv.height = H;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
+
+  const { X2, y, classNames } = get2DData();
+  if (!X2.length) return;
+
+  const pad = 30;
+  const xs = X2.map(x=>x[0]), ys2 = X2.map(x=>x[1]);
+  const xmin=Math.min(...xs)-0.5, xmax=Math.max(...xs)+0.5;
+  const ymin=Math.min(...ys2)-0.5, ymax=Math.max(...ys2)+0.5;
+  const toCanvasX = v => pad + (v-xmin)/(xmax-xmin)*(W-2*pad);
+  const toCanvasY = v => pad + (1-(v-ymin)/(ymax-ymin))*(H-2*pad);
+
+  // decision boundary grid
+  if (trees.length) {
+    const STEP = 3;
+    for (let px=0;px<W;px+=STEP) {
+      for (let py=0;py<H;py+=STEP) {
+        const wx = xmin + (px-pad)/(W-2*pad)*(xmax-xmin);
+        const wy = ymin + (1-(py-pad)/(H-2*pad))*(ymax-ymin);
+        const v = {};
+        for (const { tree } of trees) {
+          const p = treePredict(tree,[wx,wy]);
+          v[p]=(v[p]||0)+1;
+        }
+        const cls = +Object.keys(v).reduce((a,b)=>v[a]>v[b]?a:b);
+        const col = hexToRGB(COLORS[cls % COLORS.length]);
+        ctx.fillStyle = `rgba(${col},0.22)`;
+        ctx.fillRect(px,py,STEP,STEP);
+      }
+    }
+  }
+
+  // data points
+  for (let i=0;i<X2.length;i++) {
+    const cx = toCanvasX(X2[i][0]), cy = toCanvasY(X2[i][1]);
+    ctx.beginPath(); ctx.arc(cx,cy,3.5*devicePixelRatio,0,2*Math.PI);
+    ctx.fillStyle = COLORS[y[i]%COLORS.length];
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = devicePixelRatio;
+    ctx.fill(); ctx.stroke();
+  }
+
+  // legend
+  const leg = isEnsemble ? document.getElementById('boundaryLegend') : document.getElementById('singleLegend');
+  if (leg) {
+    leg.innerHTML = classNames.map((c,i)=>
+      `<span><span class="dot" style="background:${COLORS[i]}"></span>${c}</span>`
+    ).join('');
+  }
+}
+
+function hexToRGB(hex) {
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+function renderGallery() {
+  const gallery = document.getElementById('treeGallery');
+  gallery.innerHTML = forest.map((_,i) => {
+    const h = history[i];
+    const cls = i===selectedTree ? 'tree-badge active' : 'tree-badge';
+    return `<span class="${cls}" data-idx="${i}">
+      🌳 T${i+1} <span class="acc">${(h.singleAcc*100).toFixed(0)}%</span>
+    </span>`;
+  }).join('');
+  gallery.querySelectorAll('.tree-badge').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedTree = +el.dataset.idx;
+      renderGallery();
+      renderSingleTree();
+    });
+  });
+  renderSingleTree();
+}
+
+function renderSingleTree() {
+  const cv = document.getElementById('cvSingle');
+  const note = document.getElementById('singleNote');
+  if (selectedTree < 0 || selectedTree >= forest.length) {
+    const ctx = cv.getContext('2d');
+    cv.width = cv.clientWidth*devicePixelRatio||cv.width;
+    cv.height = cv.clientHeight*devicePixelRatio||cv.height;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#f5f2ea'; ctx.fillRect(0,0,cv.width,cv.height);
+    note.textContent = 'Selecione uma árvore na galeria para ver sua fronteira individual.';
+    return;
+  }
+  const t = forest[selectedTree];
+  renderBoundary(cv, [t], false);
+  note.textContent = `Árvore T${selectedTree+1} — acurácia individual: ${(t.singleAcc*100).toFixed(1)}%  |  OOB acc: ${isNaN(t.oobAcc)?'—':(t.oobAcc*100).toFixed(1)+'%'}  |  amostras OOB: ${t.oobIdx.length}`;
+}
+
+function renderTable() {
+  const tbody = document.getElementById('tblBody');
+  tbody.innerHTML = history.map((h,i) => {
+    const t = forest[i];
+    return `<tr>
+      <td>${i+1}</td>
+      <td>${t.bootIdx.length}</td>
+      <td>${(t.singleAcc*100).toFixed(1)}%</td>
+      <td>${isNaN(t.oobAcc)?'—':(t.oobAcc*100).toFixed(1)+'%'}</td>
+      <td>${(h.ensAcc*100).toFixed(1)}%</td>
+      <td>${isNaN(h.oobErr)?'—':(h.oobErr*100).toFixed(1)+'%'}</td>
+    </tr>`;
+  }).join('');
+  // scroll to bottom
+  const wrap = tbody.closest('.table-wrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+// ─────────────────────────────────────────────
+//  EVENTS
+// ─────────────────────────────────────────────
+document.getElementById('btnAddOne').addEventListener('click', () => addTree(1));
+document.getElementById('btnAdd10').addEventListener('click', () => addTree(10));
+document.getElementById('btnAdd50').addEventListener('click', () => addTree(50));
+document.getElementById('btnReset').addEventListener('click', resetForest);
+document.getElementById('datasetSel').addEventListener('change', resetForest);
+document.getElementById('maxFeat').addEventListener('change', resetForest);
+document.getElementById('maxDepth').addEventListener('change', resetForest);
+
+window.addEventListener('resize', () => { if (forest.length) renderAll(); });
+
+// initial render (empty state)
+renderAll();
+</script>
+</body>
+</html>
