@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regressao Logistica - Gradiente Descendente</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #5f564b;
+      --accent: #e85d04;
+      --accent-2: #0a9396;
+      --line: #d8cfc0;
+      --ok: #3a7d44;
+      --warn: #b34a1e;
+      --shadow: 0 10px 30px rgba(38, 25, 12, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(232, 93, 4, 0.14), transparent 30%),
+        radial-gradient(circle at 80% 5%, rgba(10, 147, 150, 0.16), transparent 25%),
+        linear-gradient(160deg, #f8f5ee 0%, #f5f2ea 60%, #f0e8da 100%);
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+
+    .wrap {
+      width: min(1280px, 95vw);
+      margin: 24px auto 32px;
+      display: grid;
+      gap: 16px;
+      animation: fade-up 500ms ease;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 6px;
+      background:
+        linear-gradient(130deg, rgba(232, 93, 4, 0.08), rgba(10, 147, 150, 0.08)),
+        var(--panel);
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      font-family: "IBM Plex Serif", Georgia, serif;
+      letter-spacing: 0.2px;
+    }
+
+    h1 {
+      font-size: clamp(1.3rem, 3vw, 2rem);
+    }
+
+    h2 {
+      font-size: clamp(1.05rem, 2vw, 1.35rem);
+      margin-bottom: 8px;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 0.86rem;
+      color: var(--muted);
+      display: grid;
+      gap: 4px;
+    }
+
+    input[type="number"],
+    input[type="range"] {
+      width: 100%;
+    }
+
+    input[type="number"] {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      background: #fff;
+      color: var(--ink);
+      font-family: inherit;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 650;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 130ms ease, opacity 130ms ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .btn-main {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-alt {
+      background: var(--accent-2);
+      color: #fff;
+    }
+
+    .btn-soft {
+      background: #ece4d7;
+      color: #2d2418;
+    }
+
+    .equation {
+      border-left: 4px solid var(--accent);
+      padding: 8px 10px;
+      background: #fff7ef;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-family: "IBM Plex Mono", Menlo, monospace;
+      overflow-x: auto;
+      white-space: nowrap;
+      font-size: 0.9rem;
+    }
+
+    .status {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fff;
+      font-size: 0.88rem;
+    }
+
+    .pill strong {
+      display: block;
+      font-size: 0.92rem;
+      margin-bottom: 4px;
+    }
+
+    .pill.ok strong {
+      color: var(--ok);
+    }
+
+    .plot {
+      width: 100%;
+      height: 340px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, #fdf8ef 100%);
+    }
+
+    .loss-legend {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      font-size: 0.83rem;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 5px;
+      vertical-align: middle;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.86rem;
+      background: #fff;
+    }
+
+    th, td {
+      border: 1px solid var(--line);
+      padding: 6px;
+      text-align: right;
+    }
+
+    th {
+      background: #f4efe5;
+      font-weight: 700;
+      color: #3b3024;
+    }
+
+    td:first-child, th:first-child {
+      text-align: center;
+    }
+
+    .table-wrap {
+      max-height: 320px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+    }
+
+    .iter-panel {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .iter-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .mono {
+      font-family: "IBM Plex Mono", Menlo, monospace;
+    }
+
+    .note {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    @media (max-width: 980px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .status {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+
+      .status {
+        grid-template-columns: 1fr;
+      }
+
+      .plot {
+        height: 260px;
+      }
+    }
+
+    @keyframes fade-up {
+      from {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card hero">
+      <h1>Regressao Logistica: Gradiente Descendente (iterativo)</h1>
+      <p class="muted">
+        Exemplo visual e passo a passo de regressao logistica simples com uma feature. Usa apenas gradiente descendente — sem equacao normal.
+      </p>
+    </section>
+
+    <section class="card grid-2">
+      <div>
+        <h2>1) Equacoes da Regressao Logistica</h2>
+        <div class="equation">z_i = theta0 + theta1 * x_i</div>
+        <div class="equation">h_theta(x_i) = sigmoid(z_i) = 1 / (1 + e^(-z_i))</div>
+        <div class="equation">J(theta) = -(1/m) * SUM[ y_i*log(h_i) + (1-y_i)*log(1-h_i) ]</div>
+        <div class="equation">dJ/dtheta0 = (1/m) * SUM( h_i - y_i )</div>
+        <div class="equation">dJ/dtheta1 = (1/m) * SUM( (h_i - y_i) * x_i )</div>
+        <div class="equation">theta_j := theta_j - alpha * dJ/dtheta_j</div>
+      </div>
+      <div class="controls">
+        <h2>2) Controles do Exemplo</h2>
+        <div class="grid-3">
+          <label>
+            Alpha (taxa de aprendizado)
+            <input id="alpha" type="number" value="0.5" step="0.05" min="0.001" />
+          </label>
+          <label>
+            Iteracoes
+            <input id="iterations" type="number" value="25" step="1" min="1" />
+          </label>
+          <label>
+            Theta0 inicial
+            <input id="theta0Init" type="number" value="0" step="0.1" />
+          </label>
+        </div>
+        <div class="grid-3">
+          <label>
+            Theta1 inicial
+            <input id="theta1Init" type="number" value="0" step="0.1" />
+          </label>
+          <label>
+            Ver iteracao
+            <input id="iterSlider" type="range" value="0" min="0" max="0" step="1" />
+          </label>
+          <label>
+            Iteracao selecionada
+            <input id="iterDisplay" type="number" value="0" min="0" max="0" step="1" />
+          </label>
+        </div>
+        <div class="grid-3">
+          <button class="btn-main" id="runOnce">1 passo de gradiente</button>
+          <button class="btn-alt" id="runBatch">Rodar N iteracoes</button>
+          <button class="btn-soft" id="resetAll">Resetar</button>
+        </div>
+        <p class="note">
+          O slider e o campo de iteracao permitem navegar no historico do gradiente descendente. Diferente da regressao linear, nao existe equacao normal para regressao logistica — o gradiente descendente e o caminho.
+        </p>
+      </div>
+    </section>
+
+    <section class="card grid-2">
+      <div>
+        <h2>3) Grafico: dados e curva sigmoide atual</h2>
+        <canvas id="plot" class="plot" width="620" height="340" aria-label="Grafico da regressao logistica"></canvas>
+        <div class="loss-legend">
+          <span><span class="dot" style="background:#e85d04"></span>Classe 0</span>
+          <span><span class="dot" style="background:#0a9396"></span>Classe 1</span>
+          <span><span class="dot" style="background:#7b2d8b; border-radius:0; width:18px; height:3px;"></span>Fronteira de decisao (P=0.5)</span>
+        </div>
+        <p class="note">Pontos coloridos = dados observados. Curva azul escura = P(y=1|x) na iteracao selecionada. Linha tracejada vertical = fronteira de decisao.</p>
+      </div>
+      <div>
+        <h2>4) Funcao de Perda J(theta0, theta1) — Entropia Cruzada</h2>
+        <canvas id="lossPlot" class="plot" width="620" height="340" aria-label="Mapa da funcao de perda logistica"></canvas>
+        <div class="loss-legend">
+          <span><span class="dot" style="background:#ffd166"></span>Trajetoria do gradiente</span>
+          <span><span class="dot" style="background:#e85d04"></span>Iteracao selecionada</span>
+        </div>
+        <p class="note" id="lossInfo"></p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>5) Estado na Iteracao Atual</h2>
+      <div>
+        <div class="status">
+          <div class="pill">
+            <strong>theta0</strong>
+            <span id="theta0Now" class="mono"></span>
+          </div>
+          <div class="pill">
+            <strong>theta1</strong>
+            <span id="theta1Now" class="mono"></span>
+          </div>
+          <div class="pill">
+            <strong>Custo J (entropia cruzada)</strong>
+            <span id="costNow" class="mono"></span>
+          </div>
+          <div class="pill ok">
+            <strong>Acuracia</strong>
+            <span id="accNow" class="mono"></span>
+          </div>
+        </div>
+        <div class="iter-panel">
+          <div class="equation" id="thetaUpdateEq"></div>
+          <div class="equation" id="gradEq"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>6) Tabela completa dos calculos na iteracao selecionada</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>i</th>
+              <th>x_i</th>
+              <th>y_i</th>
+              <th>z_i = t0 + t1*x</th>
+              <th>h_i = sigmoid(z_i)</th>
+              <th>erro = h_i - y_i</th>
+              <th>erro * x_i</th>
+              <th>perda_i</th>
+              <th>pred</th>
+            </tr>
+          </thead>
+          <tbody id="iterRows"></tbody>
+        </table>
+      </div>
+      <p class="note" id="iterSummary"></p>
+    </section>
+
+    <section class="card">
+      <h2>7) Dados usados no exemplo</h2>
+      <p class="muted">Conjunto pequeno binario para facilitar contas na lousa e visualizacao em aula.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>i</th><th>x</th><th>y (classe)</th></tr>
+          </thead>
+          <tbody id="datasetRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const data = [
+      { x: 1,   y: 0 },
+      { x: 1.5, y: 0 },
+      { x: 2,   y: 0 },
+      { x: 2.5, y: 0 },
+      { x: 3,   y: 1 },
+      { x: 3.5, y: 1 },
+      { x: 4,   y: 1 },
+      { x: 4.5, y: 1 }
+    ];
+
+    const state = { history: [] };
+
+    const els = {
+      alpha:        document.getElementById("alpha"),
+      iterations:   document.getElementById("iterations"),
+      theta0Init:   document.getElementById("theta0Init"),
+      theta1Init:   document.getElementById("theta1Init"),
+      iterSlider:   document.getElementById("iterSlider"),
+      iterDisplay:  document.getElementById("iterDisplay"),
+      runOnce:      document.getElementById("runOnce"),
+      runBatch:     document.getElementById("runBatch"),
+      resetAll:     document.getElementById("resetAll"),
+      plot:         document.getElementById("plot"),
+      lossPlot:     document.getElementById("lossPlot"),
+      theta0Now:    document.getElementById("theta0Now"),
+      theta1Now:    document.getElementById("theta1Now"),
+      costNow:      document.getElementById("costNow"),
+      accNow:       document.getElementById("accNow"),
+      lossInfo:     document.getElementById("lossInfo"),
+      thetaUpdateEq: document.getElementById("thetaUpdateEq"),
+      gradEq:       document.getElementById("gradEq"),
+      iterRows:     document.getElementById("iterRows"),
+      iterSummary:  document.getElementById("iterSummary"),
+      datasetRows:  document.getElementById("datasetRows")
+    };
+
+    function f4(n) { return Number(n).toFixed(4); }
+    function sigmoid(z) { return 1 / (1 + Math.exp(-z)); }
+
+    function clampIter(index) {
+      return Math.max(0, Math.min(index, state.history.length - 1));
+    }
+
+    function computeStep(theta0, theta1) {
+      const m = data.length;
+      const rows = data.map((point, i) => {
+        const z = theta0 + theta1 * point.x;
+        const h = sigmoid(z);
+        const error = h - point.y;
+        const loss = -(point.y * Math.log(h + 1e-15) + (1 - point.y) * Math.log(1 - h + 1e-15));
+        return {
+          i: i + 1,
+          x: point.x,
+          y: point.y,
+          z,
+          h,
+          error,
+          errX: error * point.x,
+          loss,
+          pred: h >= 0.5 ? 1 : 0
+        };
+      });
+
+      const sumErr  = rows.reduce((acc, r) => acc + r.error, 0);
+      const sumErrX = rows.reduce((acc, r) => acc + r.errX, 0);
+      const cost    = rows.reduce((acc, r) => acc + r.loss, 0) / m;
+      const accuracy = rows.filter(r => r.pred === r.y).length / m;
+      const grad0   = sumErr / m;
+      const grad1   = sumErrX / m;
+
+      return { theta0, theta1, rows, sumErr, sumErrX, grad0, grad1, cost, accuracy };
+    }
+
+    function computeCost(theta0, theta1) {
+      const m = data.length;
+      let sum = 0;
+      data.forEach((point) => {
+        const h = sigmoid(theta0 + theta1 * point.x);
+        sum += -(point.y * Math.log(h + 1e-15) + (1 - point.y) * Math.log(1 - h + 1e-15));
+      });
+      return sum / m;
+    }
+
+    function nextTheta(step, alpha) {
+      return {
+        theta0: step.theta0 - alpha * step.grad0,
+        theta1: step.theta1 - alpha * step.grad1
+      };
+    }
+
+    function syncIterInputs() {
+      const max = Math.max(0, state.history.length - 1);
+      els.iterSlider.max = String(max);
+      els.iterDisplay.max = String(max);
+    }
+
+    function rebuildHistory(extraIterations = 0) {
+      const alpha  = Number(els.alpha.value);
+      const start0 = Number(els.theta0Init.value);
+      const start1 = Number(els.theta1Init.value);
+      let history  = [computeStep(start0, start1)];
+
+      for (let k = 0; k < extraIterations; k += 1) {
+        const current = history[history.length - 1];
+        const next    = nextTheta(current, alpha);
+        history.push(computeStep(next.theta0, next.theta1));
+      }
+
+      state.history = history;
+      syncIterInputs();
+      renderIteration(clampIter(Number(els.iterDisplay.value)));
+    }
+
+    function extendHistory(iterationsToAdd) {
+      const alpha = Number(els.alpha.value);
+      if (state.history.length === 0) {
+        rebuildHistory(iterationsToAdd);
+        return;
+      }
+
+      for (let k = 0; k < iterationsToAdd; k += 1) {
+        const current = state.history[state.history.length - 1];
+        const next    = nextTheta(current, alpha);
+        state.history.push(computeStep(next.theta0, next.theta1));
+      }
+
+      syncIterInputs();
+      renderIteration(state.history.length - 1);
+    }
+
+    function renderIteration(index) {
+      const idx = clampIter(index);
+      const s   = state.history[idx];
+      els.iterSlider.value  = String(idx);
+      els.iterDisplay.value = String(idx);
+      renderModel(s, idx);
+    }
+
+    function renderModel(step, iterLabel) {
+      const alpha   = Number(els.alpha.value);
+      const updated = nextTheta(step, alpha);
+
+      els.theta0Now.textContent = f4(step.theta0);
+      els.theta1Now.textContent = f4(step.theta1);
+      els.costNow.textContent   = f4(step.cost);
+      els.accNow.textContent    = (step.accuracy * 100).toFixed(1) + "%";
+
+      els.gradEq.textContent =
+        "grad0 = (1/m)*SUM(h_i - y_i) = " + f4(step.grad0) +
+        "  |  grad1 = (1/m)*SUM((h_i - y_i)*x_i) = " + f4(step.grad1);
+
+      els.thetaUpdateEq.textContent =
+        "prox theta0 = " + f4(step.theta0) + " - " + f4(alpha) + "*" + f4(step.grad0) +
+        " = " + f4(updated.theta0) +
+        "  |  prox theta1 = " + f4(step.theta1) + " - " + f4(alpha) + "*" + f4(step.grad1) +
+        " = " + f4(updated.theta1);
+
+      els.iterRows.innerHTML = step.rows
+        .map((r) =>
+          "<tr>" +
+          "<td>" + r.i + "</td>" +
+          "<td>" + f4(r.x) + "</td>" +
+          "<td>" + r.y + "</td>" +
+          "<td>" + f4(r.z) + "</td>" +
+          "<td>" + f4(r.h) + "</td>" +
+          "<td>" + f4(r.error) + "</td>" +
+          "<td>" + f4(r.errX) + "</td>" +
+          "<td>" + f4(r.loss) + "</td>" +
+          "<td>" + r.pred + "</td>" +
+          "</tr>"
+        )
+        .join("");
+
+      els.iterSummary.textContent =
+        "Iteracao " + iterLabel +
+        ": SUM(h-y) = " + f4(step.sumErr) +
+        ", SUM((h-y)*x) = " + f4(step.sumErrX) +
+        ", J = " + f4(step.cost) +
+        ", Acuracia = " + (step.accuracy * 100).toFixed(1) + "%" +
+        ", m = " + data.length + ".";
+
+      drawPlot(step.theta0, step.theta1);
+      drawLossLandscape({ theta0: step.theta0, theta1: step.theta1, cost: step.cost });
+    }
+
+    function drawPlot(theta0, theta1) {
+      const canvas = els.plot;
+      const ctx    = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const padding = 40;
+      const xs   = data.map((d) => d.x);
+      const xMin = Math.min(...xs) - 0.4;
+      const xMax = Math.max(...xs) + 0.4;
+      const yMin = -0.12;
+      const yMax =  1.12;
+
+      const toX = (x) => padding + ((x - xMin) / (xMax - xMin)) * (w - 2 * padding);
+      const toY = (y) => h - padding - ((y - yMin) / (yMax - yMin)) * (h - 2 * padding);
+
+      // grid
+      ctx.strokeStyle = "#d7cbb7";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 5; i += 1) {
+        const gx = padding + (i / 5) * (w - 2 * padding);
+        ctx.beginPath(); ctx.moveTo(gx, padding); ctx.lineTo(gx, h - padding); ctx.stroke();
+        const gy = padding + (i / 5) * (h - 2 * padding);
+        ctx.beginPath(); ctx.moveTo(padding, gy); ctx.lineTo(w - padding, gy); ctx.stroke();
+      }
+
+      // axes
+      ctx.strokeStyle = "#53422f";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padding, h - padding); ctx.lineTo(w - padding, h - padding);
+      ctx.moveTo(padding, h - padding); ctx.lineTo(padding, padding);
+      ctx.stroke();
+
+      // threshold line at P=0.5
+      const y05 = toY(0.5);
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = "#9b8ea0";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(padding, y05); ctx.lineTo(w - padding, y05); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // decision boundary vertical: x* = -theta0/theta1
+      if (Math.abs(theta1) > 1e-8) {
+        const xStar = -theta0 / theta1;
+        if (xStar > xMin && xStar < xMax) {
+          const xStarPx = toX(xStar);
+          ctx.setLineDash([6, 5]);
+          ctx.strokeStyle = "#7b2d8b";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(xStarPx, padding); ctx.lineTo(xStarPx, h - padding); ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = "#7b2d8b";
+          ctx.font = "11px IBM Plex Sans, sans-serif";
+          ctx.fillText("x*=" + f4(xStar), xStarPx + 4, padding + 14);
+        }
+      }
+
+      // sigmoid curve
+      ctx.strokeStyle = "#17415e";
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      const steps = 200;
+      for (let k = 0; k <= steps; k += 1) {
+        const xk  = xMin + (k / steps) * (xMax - xMin);
+        const hk  = sigmoid(theta0 + theta1 * xk);
+        const px  = toX(xk);
+        const py  = toY(hk);
+        k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+
+      // data points
+      data.forEach((p) => {
+        ctx.fillStyle   = p.y === 1 ? "#0a9396" : "#e85d04";
+        ctx.strokeStyle = p.y === 1 ? "#07393a" : "#8a2e02";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(toX(p.x), toY(p.y), 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // axis labels
+      ctx.fillStyle = "#3c3025";
+      ctx.font = "13px IBM Plex Sans, sans-serif";
+      ctx.fillText("x", w - padding + 6, h - padding + 4);
+      ctx.fillText("P(y=1|x)", padding - 36, padding - 10);
+    }
+
+    function drawLossLandscape(selectedPoint) {
+      const canvas = els.lossPlot;
+      const ctx    = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      const history = state.history;
+      if (history.length === 0) return;
+
+      const theta0s = history.map((s) => s.theta0);
+      const theta1s = history.map((s) => s.theta1);
+
+      const minT0 = Math.min(...theta0s);
+      const maxT0 = Math.max(...theta0s);
+      const minT1 = Math.min(...theta1s);
+      const maxT1 = Math.max(...theta1s);
+      const padT0 = Math.max(0.8, (maxT0 - minT0) * 0.75 + 0.2);
+      const padT1 = Math.max(0.8, (maxT1 - minT1) * 0.75 + 0.2);
+
+      const t0Min = minT0 - padT0;
+      const t0Max = maxT0 + padT0;
+      const t1Min = minT1 - padT1;
+      const t1Max = maxT1 + padT1;
+
+      const padding = 38;
+      const toX = (t0) => padding + ((t0 - t0Min) / (t0Max - t0Min)) * (w - 2 * padding);
+      const toY = (t1) => h - padding - ((t1 - t1Min) / (t1Max - t1Min)) * (h - 2 * padding);
+
+      const cols = 75;
+      const rows = 55;
+      const costs = [];
+      let cMin = Infinity;
+      let cMax = -Infinity;
+
+      for (let r = 0; r <= rows; r += 1) {
+        for (let c = 0; c <= cols; c += 1) {
+          const t0   = t0Min + (c / cols) * (t0Max - t0Min);
+          const t1   = t1Min + (r / rows) * (t1Max - t1Min);
+          const cost = computeCost(t0, t1);
+          costs.push({ r, c, cost });
+          if (cost < cMin) cMin = cost;
+          if (cost > cMax) cMax = cost;
+        }
+      }
+
+      const colorFor = (cost) => {
+        const ratio = (cost - cMin) / (cMax - cMin || 1);
+        const hue   = 190 - 170 * ratio;
+        const light = 84 - 44 * ratio;
+        return "hsl(" + hue.toFixed(0) + " 78% " + light.toFixed(0) + "%)";
+      };
+
+      const cellW = (w - 2 * padding) / cols;
+      const cellH = (h - 2 * padding) / rows;
+
+      costs.forEach((cell) => {
+        const t0 = t0Min + (cell.c / cols) * (t0Max - t0Min);
+        const t1 = t1Min + (cell.r / rows) * (t1Max - t1Min);
+        ctx.fillStyle = colorFor(cell.cost);
+        ctx.fillRect(toX(t0), toY(t1) - cellH, cellW + 0.5, cellH + 0.5);
+      });
+
+      ctx.strokeStyle = "#3e3328";
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(padding, padding, w - 2 * padding, h - 2 * padding);
+
+      // gradient trajectory
+      ctx.strokeStyle = "#ffd166";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      history.forEach((s, idx) => {
+        const x = toX(s.theta0);
+        const y = toY(s.theta1);
+        idx === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // selected point
+      ctx.fillStyle = "#e85d04";
+      ctx.beginPath();
+      ctx.arc(toX(selectedPoint.theta0), toY(selectedPoint.theta1), 6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // axis labels
+      ctx.fillStyle = "#2f251a";
+      ctx.font = "13px IBM Plex Sans, sans-serif";
+      ctx.fillText("theta0", w - padding + 4, h - padding + 14);
+      ctx.fillText("theta1", 5, padding - 8);
+
+      els.lossInfo.textContent =
+        "Mapa de calor de J(theta0, theta1) — entropia cruzada: minimo aproximado = " + f4(cMin) +
+        ". Iteracao atual: theta0=" + f4(selectedPoint.theta0) +
+        ", theta1=" + f4(selectedPoint.theta1) +
+        ", J=" + f4(selectedPoint.cost) + ".";
+    }
+
+    function renderDataset() {
+      els.datasetRows.innerHTML = data
+        .map((p, idx) =>
+          "<tr><td>" + (idx + 1) + "</td><td>" + f4(p.x) + "</td><td>" + p.y + "</td></tr>"
+        )
+        .join("");
+    }
+
+    function wireEvents() {
+      els.runOnce.addEventListener("click", () => extendHistory(1));
+
+      els.runBatch.addEventListener("click", () => {
+        const n = Math.max(1, Number(els.iterations.value));
+        extendHistory(n);
+      });
+
+      els.resetAll.addEventListener("click", () => rebuildHistory(0));
+
+      [els.alpha, els.theta0Init, els.theta1Init].forEach((inp) => {
+        inp.addEventListener("change", () => rebuildHistory(0));
+      });
+
+      els.iterSlider.addEventListener("input", () => {
+        renderIteration(Number(els.iterSlider.value));
+      });
+
+      els.iterDisplay.addEventListener("change", () => {
+        renderIteration(Number(els.iterDisplay.value));
+      });
+    }
+
+    renderDataset();
+    wireEvents();
+    rebuildHistory(0);
+  </script>
+</body>
+</html>
