@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KNN — K Vizinhos Mais Próximos</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #5f564b;
+      --accent: #e85d04;
+      --accent-2: #0a9396;
+      --accent-3: #7b2d8b;
+      --line: #d8cfc0;
+      --ok: #3a7d44;
+      --warn: #b34a1e;
+      --shadow: 0 10px 30px rgba(38,25,12,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans","Segoe UI",sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(232,93,4,0.14), transparent 30%),
+        radial-gradient(circle at 80% 5%, rgba(10,147,150,0.16), transparent 25%),
+        linear-gradient(160deg,#f8f5ee 0%,#f5f2ea 60%,#f0e8da 100%);
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+    .wrap {
+      width: min(1280px,95vw);
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 16px;
+      animation: fade-up 500ms ease;
+    }
+    @keyframes fade-up {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+    .hero {
+      background:
+        linear-gradient(130deg,rgba(232,93,4,0.08),rgba(10,147,150,0.08)),
+        var(--panel);
+    }
+    h1,h2,h3 { margin:0; font-family:"IBM Plex Serif",Georgia,serif; letter-spacing:0.2px; }
+    h1 { font-size:clamp(1.3rem,3vw,2rem); }
+    h2 { font-size:clamp(1.05rem,2vw,1.3rem); margin-bottom:10px; }
+    h3 { font-size:0.95rem; color:var(--muted); font-weight:600; margin-bottom:6px; }
+    .muted { color:var(--muted); font-size:0.93rem; }
+    .note  { font-size:0.81rem; color:var(--muted); margin-top:6px; }
+    .mono  { font-family:"IBM Plex Mono",Menlo,monospace; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+
+    label { font-size:0.85rem; color:var(--muted); display:grid; gap:4px; }
+    input[type="number"],select {
+      border:1px solid var(--line); border-radius:8px; padding:7px 9px;
+      background:#fff; color:var(--ink); font-family:inherit; font-size:0.9rem; width:100%;
+    }
+    input[type="range"] { width:100%; accent-color:var(--accent); }
+    button {
+      border:0; border-radius:10px; padding:10px 14px;
+      font-weight:650; cursor:pointer; font-family:inherit; font-size:0.9rem;
+      transition:transform 130ms ease,opacity 130ms ease;
+    }
+    button:hover  { transform:translateY(-1px); }
+    button:active { transform:translateY(0); }
+    .btn-soft { background:#ece4d7; color:#2d2418; }
+
+    .toggle-row { display:flex; align-items:center; gap:8px; margin-top:6px; }
+    .toggle-row input[type="checkbox"] { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; }
+    .toggle-row label { display:inline; font-size:0.87rem; color:var(--muted); cursor:pointer; gap:0; }
+
+    .equation {
+      border-left:4px solid var(--accent); padding:7px 10px;
+      background:#fff7ef; border-radius:8px; margin-bottom:7px;
+      font-family:"IBM Plex Mono",Menlo,monospace;
+      font-size:0.87rem; overflow-x:auto; white-space:nowrap;
+    }
+    .equation.teal   { border-color:var(--accent-2); background:#f0fafa; }
+    .equation.purple { border-color:var(--accent-3); background:#f8f0fc; }
+
+    .pills { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:10px; margin-top:8px; }
+    .pill {
+      border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+      background:#fff; font-size:0.87rem;
+    }
+    .pill strong { display:block; font-size:0.93rem; margin-bottom:3px; }
+    .pill.ok   strong { color:var(--ok); }
+    .pill.warn strong { color:var(--warn); }
+
+    .plot {
+      width:100%; height:340px; border-radius:10px;
+      border:1px solid var(--line);
+      background:linear-gradient(180deg,#ffffff 0%,#fdf8ef 100%);
+      display:block; cursor:crosshair;
+    }
+    .plot-chart { height:220px; cursor:default; }
+
+    .legend {
+      display:flex; gap:12px; flex-wrap:wrap;
+      margin-top:6px; font-size:0.82rem; color:var(--muted);
+    }
+    .dot  { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+    .dash { display:inline-block; width:18px; height:3px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+
+    .info-box {
+      background:#fff; border:1px solid var(--line); border-radius:10px;
+      padding:12px; font-size:0.84rem;
+    }
+    .neighbor-row {
+      display:grid; grid-template-columns:26px 1fr auto;
+      align-items:center; gap:8px; padding:4px 0;
+      border-bottom:1px solid #f0ebe2;
+    }
+    .neighbor-row:last-child { border-bottom:none; }
+    .neighbor-rank { font-weight:700; color:var(--muted); font-size:0.79rem; font-family:"IBM Plex Mono",Menlo,monospace; }
+    .neighbor-dist { font-family:"IBM Plex Mono",Menlo,monospace; font-size:0.79rem; color:var(--muted); }
+
+    .back { font-size:0.85rem; }
+    .back a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .back a:hover { text-decoration:underline; }
+
+    @media (max-width:980px) {
+      .grid-2,.grid-4 { grid-template-columns:1fr; }
+      .pills { grid-template-columns:1fr 1fr; }
+    }
+    @media (max-width:620px) {
+      .grid-3 { grid-template-columns:1fr; }
+      .pills  { grid-template-columns:1fr; }
+      .plot   { height:260px; }
+    }
+  </style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="card hero">
+    <p class="back"><a href="../index.html">← Voltar ao índice</a></p>
+    <h1>KNN — K Vizinhos Mais Próximos</h1>
+    <p class="muted">
+      Ajuste K, escolha a métrica de distância e clique no canvas para classificar novos pontos interativamente.
+      Observe como a fronteira de decisão muda com K — pequeno K tende ao overfitting, grande K ao underfitting.
+    </p>
+  </section>
+
+  <!-- CONCEITOS -->
+  <section class="card">
+    <h2>1) Conceitos-chave</h2>
+    <div class="grid-2">
+      <div>
+        <h3>Algoritmo KNN</h3>
+        <div class="equation">Para cada ponto de consulta x_q:</div>
+        <div class="equation">d(x_q, x_i) para todo x_i no treino</div>
+        <div class="equation">Selecionar os K vizinhos mais próximos N_K(x_q)</div>
+        <div class="equation">ŷ = moda { y_i : x_i ∈ N_K(x_q) }</div>
+      </div>
+      <div>
+        <h3>Métricas de Distância &amp; Efeito de K</h3>
+        <div class="equation teal">Euclidiana: d(a,b) = √( Σ (aᵢ − bᵢ)² )</div>
+        <div class="equation teal">Manhattan:  d(a,b) = Σ |aᵢ − bᵢ|</div>
+        <div class="equation purple">K pequeno → fronteira complexa → overfitting</div>
+        <div class="equation purple">K grande  → fronteira suave   → underfitting</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTROLES -->
+  <section class="card">
+    <h2>2) Dataset &amp; Parâmetros</h2>
+    <div class="grid-3" style="margin-bottom:10px">
+      <label>
+        Dataset
+        <select id="datasetSel">
+          <option value="iris">Iris (4 features, 3 classes)</option>
+          <option value="moons" selected>Luas (2 features, 2 classes)</option>
+          <option value="circles">Círculos (2 features, 2 classes)</option>
+          <option value="xor">XOR (2 features, 2 classes)</option>
+        </select>
+      </label>
+      <label>
+        Métrica de distância
+        <select id="distMetric">
+          <option value="euclidean">Euclidiana</option>
+          <option value="manhattan">Manhattan</option>
+        </select>
+      </label>
+      <div>
+        <label>
+          K = <span id="kDisplay" style="color:var(--accent);font-weight:700;font-family:'IBM Plex Mono',monospace">5</span>
+          <input type="range" id="kSlider" min="1" max="25" value="5" step="1" />
+        </label>
+        <div class="toggle-row">
+          <input type="checkbox" id="normalizeChk" />
+          <label for="normalizeChk">Normalizar features (z-score)</label>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+      <button class="btn-soft" id="btnClear">Limpar predição</button>
+    </div>
+    <p class="note">
+      Split treino/teste: 80%/20% (fixo, semente 42). A fronteira usa os dados de treino.
+      Para Iris, a visualização usa as 2 primeiras features; a acurácia usa todas as 4.
+    </p>
+  </section>
+
+  <!-- MÉTRICAS -->
+  <section class="card">
+    <h2>3) Métricas</h2>
+    <div class="pills">
+      <div class="pill">
+        <strong>K</strong>
+        <span id="pillK" class="mono">5</span>
+      </div>
+      <div class="pill ok">
+        <strong>Acurácia Treino</strong>
+        <span id="pillTrainAcc" class="mono">—</span>
+      </div>
+      <div class="pill ok">
+        <strong>Acurácia Teste</strong>
+        <span id="pillTestAcc" class="mono">—</span>
+      </div>
+      <div class="pill">
+        <strong>Treino / Teste</strong>
+        <span id="pillSplit" class="mono">— / —</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- FRONTEIRA + INTERAÇÃO -->
+  <section class="card">
+    <h2>4) Fronteira de Decisão &amp; Predição Interativa</h2>
+    <div class="grid-2" style="align-items:start">
+      <div>
+        <canvas id="cvBoundary" class="plot" width="620" height="340"></canvas>
+        <div class="legend" id="boundaryLegend"></div>
+        <p class="note">
+          Pontos preenchidos = treino · Pontos ocos = teste · Clique para classificar um novo ponto e ver seus K vizinhos.
+        </p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div>
+          <h3>Ponto Classificado</h3>
+          <div id="predBox" class="info-box" style="min-height:58px">
+            <p class="muted" style="margin:0;font-size:0.84rem">Clique no canvas para ver uma predição.</p>
+          </div>
+        </div>
+        <div>
+          <h3>K Vizinhos Mais Próximos</h3>
+          <div id="neighborsBox" class="info-box" style="max-height:220px;overflow-y:auto">
+            <p class="muted" style="margin:0;font-size:0.84rem">Os vizinhos aparecerão aqui após o clique.</p>
+          </div>
+        </div>
+        <div>
+          <h3>Distribuição de Votos</h3>
+          <canvas id="cvVotes" width="400" height="160"
+            style="width:100%;height:160px;display:block;border-radius:10px;border:1px solid var(--line);background:#fff;cursor:default"></canvas>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACURÁCIA vs K -->
+  <section class="card">
+    <h2>5) Acurácia × K — Bias-Variance Tradeoff</h2>
+    <canvas id="cvKChart" class="plot plot-chart" width="1200" height="220"></canvas>
+    <div class="legend">
+      <span><span class="dash" style="background:var(--accent)"></span>Acurácia Treino</span>
+      <span><span class="dash" style="background:var(--accent-2)"></span>Acurácia Teste</span>
+      <span style="color:var(--muted);font-size:0.8rem">▼ K selecionado</span>
+    </div>
+    <p class="note">
+      K=1 memoriza o treino (100% treino, generaliza mal). K grande suaviza a fronteira — observe o ponto
+      ótimo na curva de teste onde bias e variância se equilibram.
+    </p>
+  </section>
+
+</main>
+
+<script>
+// ─────────────────────────────────────────────
+//  DATASETS
+// ─────────────────────────────────────────────
+function rng(seed) {
+  let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+  return () => { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+}
+
+function buildIris() {
+  const raw = [
+    [5.1,3.5,1.4,0.2,0],[4.9,3.0,1.4,0.2,0],[4.7,3.2,1.3,0.2,0],[4.6,3.1,1.5,0.2,0],[5.0,3.6,1.4,0.2,0],
+    [5.4,3.9,1.7,0.4,0],[4.6,3.4,1.4,0.3,0],[5.0,3.4,1.5,0.2,0],[4.4,2.9,1.4,0.2,0],[4.9,3.1,1.5,0.1,0],
+    [5.4,3.7,1.5,0.2,0],[4.8,3.4,1.6,0.2,0],[4.8,3.0,1.4,0.1,0],[4.3,3.0,1.1,0.1,0],[5.8,4.0,1.2,0.2,0],
+    [5.7,4.4,1.5,0.4,0],[5.4,3.9,1.3,0.4,0],[5.1,3.5,1.4,0.3,0],[5.7,3.8,1.7,0.3,0],[5.1,3.8,1.5,0.3,0],
+    [5.4,3.4,1.7,0.2,0],[5.1,3.7,1.5,0.4,0],[4.6,3.6,1.0,0.2,0],[5.1,3.3,1.7,0.5,0],[4.8,3.4,1.9,0.2,0],
+    [5.0,3.0,1.6,0.2,0],[5.0,3.4,1.6,0.4,0],[5.2,3.5,1.5,0.2,0],[5.2,3.4,1.4,0.2,0],[4.7,3.2,1.6,0.2,0],
+    [4.8,3.1,1.6,0.2,0],[5.4,3.4,1.5,0.4,0],[5.2,4.1,1.5,0.1,0],[5.5,4.2,1.4,0.2,0],[4.9,3.1,1.5,0.2,0],
+    [5.0,3.2,1.2,0.2,0],[5.5,3.5,1.3,0.2,0],[4.9,3.6,1.4,0.1,0],[4.4,3.0,1.3,0.2,0],[5.1,3.4,1.5,0.2,0],
+    [5.0,3.5,1.3,0.3,0],[4.5,2.3,1.3,0.3,0],[4.4,3.2,1.3,0.2,0],[5.0,3.5,1.6,0.6,0],[5.1,3.8,1.9,0.4,0],
+    [4.8,3.0,1.4,0.3,0],[5.1,3.8,1.6,0.2,0],[4.6,3.2,1.4,0.2,0],[5.3,3.7,1.5,0.2,0],[5.0,3.3,1.4,0.2,0],
+    [7.0,3.2,4.7,1.4,1],[6.4,3.2,4.5,1.5,1],[6.9,3.1,4.9,1.5,1],[5.5,2.3,4.0,1.3,1],[6.5,2.8,4.6,1.5,1],
+    [5.7,2.8,4.5,1.3,1],[6.3,3.3,4.7,1.6,1],[4.9,2.4,3.3,1.0,1],[6.6,2.9,4.6,1.3,1],[5.2,2.7,3.9,1.4,1],
+    [5.0,2.0,3.5,1.0,1],[5.9,3.0,4.2,1.5,1],[6.0,2.2,4.0,1.0,1],[6.1,2.9,4.7,1.4,1],[5.6,2.9,3.6,1.3,1],
+    [6.7,3.1,4.4,1.4,1],[5.6,3.0,4.5,1.5,1],[5.8,2.7,4.1,1.0,1],[6.2,2.2,4.5,1.5,1],[5.6,2.5,3.9,1.1,1],
+    [5.9,3.2,4.8,1.8,1],[6.1,2.8,4.0,1.3,1],[6.3,2.5,4.9,1.5,1],[6.1,2.8,4.7,1.2,1],[6.4,2.9,4.3,1.3,1],
+    [6.6,3.0,4.4,1.4,1],[6.8,2.8,4.8,1.4,1],[6.7,3.0,5.0,1.7,1],[6.0,2.9,4.5,1.5,1],[5.7,2.6,3.5,1.0,1],
+    [5.5,2.4,3.8,1.1,1],[5.5,2.4,3.7,1.0,1],[5.8,2.7,3.9,1.2,1],[6.0,2.7,5.1,1.6,1],[5.4,3.0,4.5,1.5,1],
+    [6.0,3.4,4.5,1.6,1],[6.7,3.1,4.7,1.5,1],[6.3,2.3,4.4,1.3,1],[5.6,3.0,4.1,1.3,1],[5.5,2.5,4.0,1.3,1],
+    [5.5,2.6,4.4,1.2,1],[6.1,3.0,4.6,1.4,1],[5.8,2.6,4.0,1.2,1],[5.0,2.3,3.3,1.0,1],[5.6,2.7,4.2,1.3,1],
+    [5.7,3.0,4.2,1.2,1],[5.7,2.9,4.2,1.3,1],[6.2,2.9,4.3,1.3,1],[5.1,2.5,3.0,1.1,1],[5.7,2.8,4.1,1.3,1],
+    [6.3,3.3,6.0,2.5,2],[5.8,2.7,5.1,1.9,2],[7.1,3.0,5.9,2.1,2],[6.3,2.9,5.6,1.8,2],[6.5,3.0,5.8,2.2,2],
+    [7.6,3.0,6.6,2.1,2],[4.9,2.5,4.5,1.7,2],[7.3,2.9,6.3,1.8,2],[6.7,2.5,5.8,1.8,2],[7.2,3.6,6.1,2.5,2],
+    [6.5,3.2,5.1,2.0,2],[6.4,2.7,5.3,1.9,2],[6.8,3.0,5.5,2.1,2],[5.7,2.5,5.0,2.0,2],[5.8,2.8,5.1,2.4,2],
+    [6.4,3.2,5.3,2.3,2],[6.5,3.0,5.5,1.8,2],[7.7,3.8,6.7,2.2,2],[7.7,2.6,6.9,2.3,2],[6.0,2.2,5.0,1.5,2],
+    [6.9,3.2,5.7,2.3,2],[5.6,2.8,4.9,2.0,2],[7.7,2.8,6.7,2.0,2],[6.3,2.7,4.9,1.8,2],[6.7,3.3,5.7,2.1,2],
+    [7.2,3.2,6.0,1.8,2],[6.2,2.8,4.8,1.8,2],[6.1,3.0,4.9,1.8,2],[6.4,2.8,5.6,2.1,2],[7.2,3.0,5.8,1.6,2],
+    [7.4,2.8,6.1,1.9,2],[7.9,3.8,6.4,2.0,2],[6.4,2.8,5.6,2.2,2],[6.3,2.8,5.1,1.5,2],[6.1,2.6,5.6,1.4,2],
+    [7.7,3.0,6.1,2.3,2],[6.3,3.4,5.6,2.4,2],[6.4,3.1,5.5,1.8,2],[6.0,3.0,4.8,1.8,2],[6.9,3.1,5.4,2.1,2],
+    [6.7,3.1,5.6,2.4,2],[6.9,3.1,5.1,2.3,2],[5.8,2.7,5.1,1.9,2],[6.8,3.2,5.9,2.3,2],[6.7,3.3,5.7,2.5,2],
+    [6.7,3.0,5.2,2.3,2],[6.3,2.5,5.0,1.9,2],[6.5,3.0,5.2,2.0,2],[6.2,3.4,5.4,2.3,2],[5.9,3.0,5.1,1.8,2]
+  ];
+  return {
+    X: raw.map(r => r.slice(0,4)),
+    y: raw.map(r => r[4]),
+    featureNames: ['sepal length','sepal width','petal length','petal width'],
+    classNames: ['Setosa','Versicolor','Virginica']
+  };
+}
+
+function buildMoons(n) {
+  const rand = rng(42); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const h = i < n/2;
+    const a = rand()*Math.PI;
+    const nx = (h ? Math.cos(a) : 1-Math.cos(a)) + (rand()-0.5)*0.35;
+    const ny = (h ? Math.sin(a) : -Math.sin(a)+0.5) + (rand()-0.5)*0.35;
+    X.push([nx,ny]); y.push(h?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Lua A','Lua B'] };
+}
+
+function buildCircles(n) {
+  const rand = rng(7); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const inner = i < n/2;
+    const a = rand()*2*Math.PI;
+    const r = (inner ? 0.4 : 1.0) + (rand()-0.5)*0.12;
+    X.push([r*Math.cos(a), r*Math.sin(a)]); y.push(inner?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Interno','Externo'] };
+}
+
+function buildXOR(n) {
+  const rand = rng(13); const X=[],y=[];
+  for (let i=0;i<n;i++) {
+    const x1 = rand()*2-1, x2 = rand()*2-1;
+    X.push([x1,x2]); y.push((x1*x2>0)?0:1);
+  }
+  return { X, y, featureNames:['x₁','x₂'], classNames:['Quad +','Quad −'] };
+}
+
+const DATASETS = {
+  iris: buildIris(),
+  moons: buildMoons(300),
+  circles: buildCircles(300),
+  xor: buildXOR(300)
+};
+
+// ─────────────────────────────────────────────
+//  KNN UTILS
+// ─────────────────────────────────────────────
+function euclidean(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += (a[i]-b[i])**2;
+  return Math.sqrt(s);
+}
+
+function manhattan(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += Math.abs(a[i]-b[i]);
+  return s;
+}
+
+function computeNormParams(X) {
+  const nF = X[0].length;
+  return Array.from({length: nF}, (_, f) => {
+    const vals = X.map(x => x[f]);
+    const mean = vals.reduce((a,b)=>a+b,0) / vals.length;
+    const std  = Math.sqrt(vals.reduce((a,b)=>a+(b-mean)**2,0) / vals.length) || 1;
+    return { mean, std };
+  });
+}
+
+function applyNorm(X, params) {
+  return X.map(x => x.map((v,f) => (v - params[f].mean) / params[f].std));
+}
+
+function knnClassify(Xtr, ytr, query, k, distFn) {
+  const dists = Xtr.map((x,i) => ({ d: distFn(x, query), i, cls: ytr[i] }));
+  dists.sort((a,b) => a.d - b.d);
+  const neighbors = dists.slice(0, k);
+  const votes = {};
+  for (const { cls } of neighbors) votes[cls] = (votes[cls]||0)+1;
+  const pred = +Object.keys(votes).reduce((a,b) => votes[a]>votes[b]?a:b);
+  return { pred, neighbors, votes };
+}
+
+function computeAccuracy(Xtr, ytr, Xte, yte, k, distFn) {
+  let correct = 0;
+  for (let i = 0; i < Xte.length; i++) {
+    const { pred } = knnClassify(Xtr, ytr, Xte[i], k, distFn);
+    if (pred === yte[i]) correct++;
+  }
+  return correct / Xte.length;
+}
+
+// ─────────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────────
+const COLORS = ['#e85d04','#0a9396','#7b2d8b','#f4a261','#2a9d8f','#e63946'];
+const K_VALUES = [1,2,3,4,5,6,7,8,9,10,12,14,17,20,25];
+
+let trainX, trainY, testX, testY, normParams, normTrainX, normTestX;
+let clickedPoint = null;
+
+function initDataset() {
+  const ds = DATASETS[document.getElementById('datasetSel').value];
+  const rand = rng(42);
+  const idx = [...Array(ds.X.length).keys()];
+  for (let i = ds.X.length-1; i > 0; i--) {
+    const j = Math.floor(rand()*(i+1));
+    [idx[i],idx[j]] = [idx[j],idx[i]];
+  }
+  const cut = Math.floor(ds.X.length * 0.8);
+  const trIdx = idx.slice(0, cut), teIdx = idx.slice(cut);
+  trainX = trIdx.map(i => ds.X[i]); trainY = trIdx.map(i => ds.y[i]);
+  testX  = teIdx.map(i => ds.X[i]); testY  = teIdx.map(i => ds.y[i]);
+  normParams  = computeNormParams(trainX);
+  normTrainX  = applyNorm(trainX, normParams);
+  normTestX   = applyNorm(testX,  normParams);
+  clickedPoint = null;
+}
+
+function getK()       { return +document.getElementById('kSlider').value; }
+function getDistFn()  { return document.getElementById('distMetric').value === 'euclidean' ? euclidean : manhattan; }
+function isNorm()     { return document.getElementById('normalizeChk').checked; }
+function getTrainX()  { return isNorm() ? normTrainX : trainX; }
+function getTestX()   { return isNorm() ? normTestX  : testX; }
+
+function currentClassNames() {
+  return DATASETS[document.getElementById('datasetSel').value].classNames;
+}
+
+// Project to first 2 features for visualization
+function proj2D(X) { return X.map(x => [x[0], x[1]]); }
+
+function get2DBounds() {
+  const X2 = [...proj2D(getTrainX()), ...proj2D(getTestX())];
+  const xs = X2.map(x=>x[0]), ys = X2.map(x=>x[1]);
+  const px = 0.5;
+  return { xmin:Math.min(...xs)-px, xmax:Math.max(...xs)+px, ymin:Math.min(...ys)-px, ymax:Math.max(...ys)+px };
+}
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function renderAll() {
+  renderMetrics();
+  renderBoundary();
+  renderKChart();
+  renderInteraction();
+}
+
+function renderMetrics() {
+  const k = getK(), distFn = getDistFn();
+  const Xtr = getTrainX(), Xte = getTestX();
+  const trainAcc = computeAccuracy(Xtr, trainY, Xtr, trainY, k, distFn);
+  const testAcc  = computeAccuracy(Xtr, trainY, Xte, testY,  k, distFn);
+  document.getElementById('pillK').textContent = k;
+  document.getElementById('kDisplay').textContent = k;
+  document.getElementById('pillTrainAcc').textContent = (trainAcc*100).toFixed(1)+'%';
+  document.getElementById('pillTestAcc').textContent  = (testAcc*100).toFixed(1)+'%';
+  document.getElementById('pillSplit').textContent = `${trainX.length} / ${testX.length}`;
+}
+
+function renderBoundary() {
+  const cv = document.getElementById('cvBoundary');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || cv.width;
+  const H = cv.clientHeight * devicePixelRatio || cv.height;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+
+  const { xmin, xmax, ymin, ymax } = get2DBounds();
+  const Xtr2D = proj2D(getTrainX());
+  const Xte2D = proj2D(getTestX());
+  const k = getK(), distFn = getDistFn();
+  const pad = 28;
+  const toX = v => pad + (v-xmin)/(xmax-xmin)*(W-2*pad);
+  const toY = v => pad + (1-(v-ymin)/(ymax-ymin))*(H-2*pad);
+  const toWX = px => xmin + (px-pad)/(W-2*pad)*(xmax-xmin);
+  const toWY = py => ymin + (1-(py-pad)/(H-2*pad))*(ymax-ymin);
+
+  // Decision boundary
+  const STEP = Math.max(3, Math.round(4 * devicePixelRatio));
+  for (let px = 0; px < W; px += STEP) {
+    for (let py = 0; py < H; py += STEP) {
+      const { pred } = knnClassify(Xtr2D, trainY, [toWX(px), toWY(py)], k, distFn);
+      const [r,g,b] = hexToRGB(COLORS[pred % COLORS.length]);
+      ctx.fillStyle = `rgba(${r},${g},${b},0.20)`;
+      ctx.fillRect(px, py, STEP, STEP);
+    }
+  }
+
+  // Lines and highlight rings for clicked point's neighbors
+  if (clickedPoint) {
+    const qx = toX(clickedPoint.coord[0]), qy = toY(clickedPoint.coord[1]);
+    for (const nb of clickedPoint.neighbors) {
+      const nx = toX(Xtr2D[nb.i][0]), ny = toY(Xtr2D[nb.i][1]);
+      const [r,g,b] = hexToRGB(COLORS[nb.cls % COLORS.length]);
+      ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(nx, ny);
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.55)`;
+      ctx.lineWidth = 1.5 * devicePixelRatio;
+      ctx.setLineDash([4*devicePixelRatio, 3*devicePixelRatio]);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    for (const nb of clickedPoint.neighbors) {
+      const nx = toX(Xtr2D[nb.i][0]), ny = toY(Xtr2D[nb.i][1]);
+      ctx.beginPath(); ctx.arc(nx, ny, 7*devicePixelRatio, 0, 2*Math.PI);
+      ctx.strokeStyle = COLORS[nb.cls % COLORS.length];
+      ctx.lineWidth = 2 * devicePixelRatio; ctx.stroke();
+    }
+  }
+
+  // Training points (filled)
+  for (let i = 0; i < Xtr2D.length; i++) {
+    ctx.beginPath(); ctx.arc(toX(Xtr2D[i][0]), toY(Xtr2D[i][1]), 3.5*devicePixelRatio, 0, 2*Math.PI);
+    ctx.fillStyle = COLORS[trainY[i] % COLORS.length];
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = devicePixelRatio;
+    ctx.fill(); ctx.stroke();
+  }
+
+  // Test points (hollow)
+  for (let i = 0; i < Xte2D.length; i++) {
+    ctx.beginPath(); ctx.arc(toX(Xte2D[i][0]), toY(Xte2D[i][1]), 3*devicePixelRatio, 0, 2*Math.PI);
+    ctx.strokeStyle = COLORS[testY[i] % COLORS.length];
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.lineWidth = 1.5 * devicePixelRatio;
+    ctx.fill(); ctx.stroke();
+  }
+
+  // Clicked query point
+  if (clickedPoint) {
+    const qx = toX(clickedPoint.coord[0]), qy = toY(clickedPoint.coord[1]);
+    const col = COLORS[clickedPoint.pred % COLORS.length];
+    ctx.beginPath(); ctx.arc(qx, qy, 7*devicePixelRatio, 0, 2*Math.PI);
+    ctx.fillStyle = col; ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5 * devicePixelRatio; ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5 * devicePixelRatio;
+    ctx.beginPath();
+    ctx.moveTo(qx-13*devicePixelRatio, qy); ctx.lineTo(qx+13*devicePixelRatio, qy);
+    ctx.moveTo(qx, qy-13*devicePixelRatio); ctx.lineTo(qx, qy+13*devicePixelRatio);
+    ctx.stroke();
+  }
+
+  const classNames = currentClassNames();
+  document.getElementById('boundaryLegend').innerHTML = classNames.map((c,i) =>
+    `<span><span class="dot" style="background:${COLORS[i]}"></span>${c}</span>`
+  ).join('') + '<span style="color:var(--muted)"><span class="dot" style="background:transparent;border:2px solid #888;margin-right:4px"></span>Teste</span>';
+}
+
+function renderKChart() {
+  const cv = document.getElementById('cvKChart');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || cv.width;
+  const H = cv.clientHeight * devicePixelRatio || cv.height;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+
+  const distFn = getDistFn();
+  const Xtr = getTrainX(), Xte = getTestX();
+  const currentK = getK();
+
+  // Pre-sort distances once
+  const teSorted = Xte.map(q => Xtr.map((x,i) => ({ d: distFn(x,q), cls: trainY[i] })).sort((a,b)=>a.d-b.d));
+  const trSorted = Xtr.map(q => Xtr.map((x,i) => ({ d: distFn(x,q), cls: trainY[i] })).sort((a,b)=>a.d-b.d));
+
+  const results = K_VALUES.map(k => {
+    let teOk = 0;
+    for (let i = 0; i < testY.length; i++) {
+      const votes = {}; for (let j=0;j<k;j++) { const c=teSorted[i][j].cls; votes[c]=(votes[c]||0)+1; }
+      if (+Object.keys(votes).reduce((a,b)=>votes[a]>votes[b]?a:b) === testY[i]) teOk++;
+    }
+    let trOk = 0;
+    for (let i = 0; i < trainY.length; i++) {
+      const votes = {}; for (let j=0;j<k;j++) { const c=trSorted[i][j].cls; votes[c]=(votes[c]||0)+1; }
+      if (+Object.keys(votes).reduce((a,b)=>votes[a]>votes[b]?a:b) === trainY[i]) trOk++;
+    }
+    return { k, trainAcc: trOk/trainY.length, testAcc: teOk/testY.length };
+  });
+
+  const pad = { t:28, r:20, b:46, l:54 };
+  const pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+  const xOf = i => pad.l + i/(results.length-1)*pw;
+  const yOf = v => pad.t + ph*(1-v);
+
+  // Grid
+  ctx.strokeStyle = '#ece4d7'; ctx.lineWidth = 1;
+  for (let v=0; v<=1; v+=0.2) {
+    const gy = yOf(v);
+    ctx.beginPath(); ctx.moveTo(pad.l,gy); ctx.lineTo(pad.l+pw,gy); ctx.stroke();
+    ctx.fillStyle='#aaa'; ctx.font=`${11*devicePixelRatio}px IBM Plex Mono,monospace`;
+    ctx.textAlign='right'; ctx.fillText((v*100).toFixed(0)+'%', pad.l-6, gy+4);
+  }
+
+  // Current K marker (vertical line)
+  const nearestIdx = K_VALUES.reduce((best,kv,i) => Math.abs(kv-currentK)<Math.abs(K_VALUES[best]-currentK)?i:best, 0);
+  const markerX = xOf(nearestIdx);
+  ctx.strokeStyle = 'rgba(232,93,4,0.3)'; ctx.lineWidth = 2*devicePixelRatio;
+  ctx.beginPath(); ctx.moveTo(markerX, pad.t); ctx.lineTo(markerX, pad.t+ph); ctx.stroke();
+  // Triangle at top
+  ctx.fillStyle = '#e85d04';
+  ctx.beginPath();
+  ctx.moveTo(markerX, pad.t+ph+4);
+  ctx.lineTo(markerX-5*devicePixelRatio, pad.t+ph+12);
+  ctx.lineTo(markerX+5*devicePixelRatio, pad.t+ph+12);
+  ctx.closePath(); ctx.fill();
+
+  // Series
+  const series = [
+    { key:'trainAcc', color:'#e85d04' },
+    { key:'testAcc',  color:'#0a9396' },
+  ];
+  for (const s of series) {
+    ctx.beginPath(); ctx.strokeStyle = s.color; ctx.lineWidth = 2*devicePixelRatio;
+    results.forEach((r,i) => { i===0 ? ctx.moveTo(xOf(i),yOf(r[s.key])) : ctx.lineTo(xOf(i),yOf(r[s.key])); });
+    ctx.stroke();
+    results.forEach((r,i) => {
+      ctx.beginPath(); ctx.arc(xOf(i),yOf(r[s.key]),3.5*devicePixelRatio,0,2*Math.PI);
+      ctx.fillStyle = s.color; ctx.fill();
+    });
+  }
+
+  // X labels
+  ctx.fillStyle='#888'; ctx.font=`${10*devicePixelRatio}px IBM Plex Mono,monospace`; ctx.textAlign='center';
+  results.forEach((r,i) => ctx.fillText('K='+r.k, xOf(i), H-pad.b+14));
+  ctx.font=`${10*devicePixelRatio}px IBM Plex Sans,sans-serif`;
+  ctx.fillText('Valor de K', pad.l+pw/2, H-4);
+}
+
+function renderInteraction() {
+  const predBox      = document.getElementById('predBox');
+  const neighborsBox = document.getElementById('neighborsBox');
+  const cv  = document.getElementById('cvVotes');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || cv.width;
+  const H = cv.clientHeight * devicePixelRatio || cv.height;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#fafaf8'; ctx.fillRect(0,0,W,H);
+
+  if (!clickedPoint) return;
+
+  const classNames = currentClassNames();
+  const { pred, neighbors, votes } = clickedPoint;
+  const allClasses = [...new Set(trainY)].sort((a,b)=>a-b);
+
+  predBox.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+      <span style="width:14px;height:14px;border-radius:50%;background:${COLORS[pred%COLORS.length]};flex-shrink:0;display:inline-block"></span>
+      <strong style="font-size:1rem">${classNames[pred]}</strong>
+    </div>
+    <div style="font-size:0.81rem;color:var(--muted)">
+      Coords: (${clickedPoint.rawCoord.map(v=>v.toFixed(3)).join(', ')})<br/>
+      Votos: ${allClasses.map(c=>`${classNames[c]}: ${votes[c]||0}`).join(' · ')}
+    </div>`;
+
+  neighborsBox.innerHTML = neighbors.map((nb,i) => `
+    <div class="neighbor-row">
+      <span class="neighbor-rank">${i+1}°</span>
+      <span><span class="dot" style="background:${COLORS[nb.cls%COLORS.length]}"></span>${classNames[nb.cls]}</span>
+      <span class="neighbor-dist">d=${nb.d.toFixed(3)}</span>
+    </div>`).join('');
+
+  // Bar chart for votes
+  const barCount = allClasses.length;
+  const bw = W / (barCount + 1);
+  const maxV = getK();
+  const chartH = H - 36;
+  allClasses.forEach((cls, i) => {
+    const v = votes[cls] || 0;
+    const barH = chartH * v / maxV;
+    const x = bw * 0.5 + i * bw;
+    const [r,g,b] = hexToRGB(COLORS[cls % COLORS.length]);
+    ctx.fillStyle = cls === pred ? COLORS[cls%COLORS.length] : `rgba(${r},${g},${b},0.45)`;
+    ctx.fillRect(x - bw*0.35, chartH - barH + 8, bw*0.7, barH);
+    ctx.fillStyle = '#444';
+    ctx.font = `bold ${12*devicePixelRatio}px IBM Plex Mono,monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(v, x, chartH - barH + 5);
+    ctx.fillStyle = '#666';
+    ctx.font = `${10*devicePixelRatio}px IBM Plex Sans,sans-serif`;
+    ctx.fillText(classNames[cls].length > 8 ? classNames[cls].slice(0,8)+'…' : classNames[cls], x, H-6);
+  });
+}
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+function hexToRGB(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+// ─────────────────────────────────────────────
+//  CANVAS CLICK
+// ─────────────────────────────────────────────
+document.getElementById('cvBoundary').addEventListener('click', function(e) {
+  const cv = this;
+  const rect = cv.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * (cv.width / rect.width);
+  const py = (e.clientY - rect.top)  * (cv.height / rect.height);
+
+  const { xmin, xmax, ymin, ymax } = get2DBounds();
+  const W = cv.width, H = cv.height, pad = 28;
+  const wx = xmin + (px-pad)/(W-2*pad)*(xmax-xmin);
+  const wy = ymin + (1-(py-pad)/(H-2*pad))*(ymax-ymin);
+
+  const Xtr2D = proj2D(getTrainX());
+  const { pred, neighbors, votes } = knnClassify(Xtr2D, trainY, [wx, wy], getK(), getDistFn());
+
+  // Back-project to raw feature space if normalized
+  let rawCoord = [wx, wy];
+  if (isNorm()) {
+    rawCoord = [
+      wx * normParams[0].std + normParams[0].mean,
+      wy * normParams[1].std + normParams[1].mean
+    ];
+  }
+  clickedPoint = { coord: [wx, wy], rawCoord, pred, neighbors, votes };
+  renderBoundary();
+  renderInteraction();
+});
+
+// ─────────────────────────────────────────────
+//  EVENTS
+// ─────────────────────────────────────────────
+let renderTimer = null;
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderAll, 60);
+}
+
+document.getElementById('datasetSel').addEventListener('change', () => { initDataset(); renderAll(); });
+document.getElementById('distMetric').addEventListener('change', () => { clickedPoint=null; renderAll(); });
+document.getElementById('normalizeChk').addEventListener('change', () => { clickedPoint=null; renderAll(); });
+document.getElementById('kSlider').addEventListener('input', () => {
+  document.getElementById('kDisplay').textContent = getK();
+  document.getElementById('pillK').textContent = getK();
+  if (clickedPoint) {
+    const Xtr2D = proj2D(getTrainX());
+    const { pred, neighbors, votes } = knnClassify(Xtr2D, trainY, clickedPoint.coord, getK(), getDistFn());
+    clickedPoint = { ...clickedPoint, pred, neighbors, votes };
+  }
+  scheduleRender();
+});
+document.getElementById('btnClear').addEventListener('click', () => { clickedPoint=null; renderBoundary(); renderInteraction(); });
+
+window.addEventListener('resize', renderAll);
+
+// INIT
+initDataset();
+renderAll();
+</script>
+</body>
+</html>
