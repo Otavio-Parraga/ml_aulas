@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>N-gram Language Model — Interactive Explorer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0b1120;
+      --surface: #111827;
+      --s2:      #1e293b;
+      --border:  #1e293b;
+      --text:    #e2e8f0;
+      --dim:     #94a3b8;
+      --muted:   #475569;
+      --green:   #22c55e;
+      --orange:  #f97316;
+      --blue:    #3b82f6;
+      --yellow:  #fbbf24;
+      --purple:  #818cf8;
+      --teal:    #2dd4bf;
+      --red:     #ef4444;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 17px; font-weight: 700; }
+    .dim { color: var(--dim); font-weight: 400; }
+    .badge {
+      background: var(--s2); border: 1px solid #334155;
+      border-radius: 99px; padding: 3px 12px;
+      font-size: 12px; font-weight: 700; color: var(--yellow);
+    }
+
+    /* ── Ctrl bar ── */
+    .ctrl-bar {
+      display: flex; flex-wrap: wrap; gap: 18px;
+      padding: 10px 22px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .ctrl-group { display: flex; flex-direction: column; gap: 5px; }
+    .ctrl-label {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .7px; color: var(--dim);
+    }
+    .n-selector { display: flex; gap: 4px; }
+    .n-btn {
+      background: var(--s2); border: 1px solid #334155; border-radius: 6px;
+      color: var(--dim); cursor: pointer; font-size: 13px; font-weight: 600;
+      padding: 5px 13px; transition: all 120ms;
+    }
+    .n-btn:hover { border-color: var(--blue); color: var(--blue); }
+    .n-btn.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+
+    .toggle-wrap { display: flex; align-items: center; gap: 8px; }
+    .toggle { position: relative; display: inline-block; width: 34px; height: 18px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute; cursor: pointer; top:0; left:0; right:0; bottom:0;
+      background: var(--s2); border: 1px solid #334155; border-radius: 20px; transition: 200ms;
+    }
+    .toggle-slider::before {
+      position: absolute; content: '';
+      height: 12px; width: 12px; left: 2px; top: 2px;
+      background: var(--dim); border-radius: 50%; transition: 200ms;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--purple); border-color: var(--purple); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(16px); background: #fff; }
+
+    .btn-train {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border: none; border-radius: 8px; color: #fff; cursor: pointer;
+      font-size: 14px; font-weight: 700; padding: 8px 22px; transition: opacity 130ms;
+      margin-left: auto;
+    }
+    .btn-train:hover { opacity: 0.85; }
+
+    /* ── Stats ── */
+    .stats-row {
+      display: flex; gap: 22px; padding: 5px 22px;
+      background: #0d1526; border-bottom: 1px solid var(--border);
+      flex-shrink: 0; align-items: center;
+    }
+    .stat { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dim); }
+    .stat .val { font-weight: 700; color: var(--text); }
+
+    /* ── Grid ── */
+    .main-grid {
+      flex: 1; min-height: 0;
+      display: grid;
+      grid-template-columns: 36% 64%;
+      grid-template-rows: 58% 42%;
+    }
+
+    /* ── Panels ── */
+    .panel {
+      min-height: 0; display: flex; flex-direction: column;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .panel:last-child { border-right: none; }
+    .full-row { grid-column: 1 / -1; border-bottom: none; }
+
+    .panel-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 7px 13px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-title {
+      font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .6px; color: var(--dim);
+    }
+    .panel-hint { font-size: 10px; color: var(--muted); }
+
+    /* ── Training text ── */
+    .train-body { flex: 1; min-height: 0; padding: 10px; }
+    #training-text {
+      width: 100%; height: 100%;
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      color: var(--text);
+      font-family: 'Consolas', 'Cascadia Code', 'Monaco', monospace;
+      font-size: 13px; line-height: 1.7;
+      padding: 10px 12px; resize: none;
+    }
+    #training-text:focus { outline: 2px solid var(--blue); border-color: transparent; }
+
+    /* ── Prob explorer ── */
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      color: var(--muted); gap: 8px; text-align: center; padding: 20px;
+    }
+    .empty-icon { font-size: 26px; opacity: 0.45; }
+
+    .prob-split { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+
+    .ctx-sidebar {
+      width: 165px; flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .ctx-search-wrap { padding: 7px; flex-shrink: 0; }
+    .ctx-search {
+      width: 100%; background: var(--s2); border: 1px solid #334155;
+      border-radius: 5px; color: var(--text); font-size: 12px; padding: 4px 8px;
+    }
+    .ctx-search:focus { outline: 2px solid var(--blue); border-color: transparent; }
+    .ctx-list { flex: 1; overflow-y: auto; }
+    .ctx-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px; cursor: pointer;
+      border-bottom: 1px solid rgba(30,41,59,0.6); transition: background 80ms;
+    }
+    .ctx-item:hover { background: rgba(255,255,255,0.04); }
+    .ctx-item.active { background: rgba(59,130,246,0.14); border-left: 2px solid var(--blue); padding-left: 8px; }
+    .ctx-name {
+      font-family: monospace; font-size: 12px; color: var(--orange);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;
+    }
+    .ctx-item.active .ctx-name { color: var(--blue); }
+    .ctx-cnt {
+      font-size: 10px; color: var(--muted); background: var(--s2);
+      border-radius: 99px; padding: 1px 5px; flex-shrink: 0; margin-left: 4px;
+    }
+
+    .dist-area { flex: 1; overflow-y: auto; padding: 13px; }
+
+    /* Formula box */
+    .formula-box {
+      background: rgba(251,191,36,0.07); border: 1px solid rgba(251,191,36,0.22);
+      border-radius: 8px; padding: 9px 13px; margin-bottom: 13px;
+    }
+    .formula-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
+    .formula-gen { font-family: monospace; font-size: 13px; color: var(--yellow); }
+    .formula-inst { font-family: monospace; font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+    /* Distribution bars */
+    .dist-heading { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+    .dist-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+    .dist-word {
+      font-family: monospace; font-size: 13px; font-weight: 600; color: var(--green);
+      width: 95px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dist-word.end { color: var(--muted); }
+    .dist-bar-wrap { flex: 1; }
+    .dist-bar-bg { background: var(--s2); border-radius: 4px; height: 18px; position: relative; overflow: hidden; }
+    .dist-bar-fill { height: 100%; border-radius: 4px; position: absolute; top:0; left:0; transition: width 350ms ease; }
+    .dist-bar-lbl {
+      position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+      font-size: 11px; color: #fff; font-weight: 600; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    }
+    .dist-frac { font-size: 11px; color: var(--muted); width: 58px; text-align: right; flex-shrink: 0; }
+
+    /* ── Completion ── */
+    .comp-body {
+      flex: 1; min-height: 0; display: flex; flex-direction: column;
+      padding: 9px 13px 9px;
+    }
+    .input-row { display: flex; gap: 7px; align-items: center; flex-shrink: 0; }
+    #sentence-input {
+      flex: 1; background: var(--s2); border: 1px solid #334155;
+      border-radius: 8px; color: var(--text); font-size: 15px;
+      padding: 8px 13px; outline: none;
+    }
+    #sentence-input:focus { border-color: var(--blue); }
+    #sentence-input::placeholder { color: var(--muted); }
+    #sentence-input:disabled { opacity: 0.4; }
+
+    .btn-sm {
+      background: var(--s2); border: 1px solid #334155; border-radius: 6px;
+      color: var(--dim); cursor: pointer; font-size: 12px; font-weight: 600;
+      padding: 7px 11px; white-space: nowrap; transition: all 120ms;
+    }
+    .btn-sm:hover { border-color: var(--blue); color: var(--blue); }
+    .btn-gen { border-color: rgba(129,140,248,0.4); color: var(--purple); background: rgba(129,140,248,0.1); }
+    .btn-gen:hover { background: rgba(129,140,248,0.2); border-color: var(--purple); color: var(--purple); }
+
+    .ctx-display {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
+      margin: 6px 0 5px; font-size: 11px; color: var(--dim);
+      min-height: 20px; flex-shrink: 0;
+    }
+    .ctx-tok {
+      background: rgba(249,115,22,0.13); border: 1px solid rgba(249,115,22,0.32);
+      border-radius: 4px; color: var(--orange); font-family: monospace;
+      font-size: 11px; padding: 1px 6px;
+    }
+    .ctx-tok.start { color: var(--purple); background: rgba(129,140,248,0.1); border-color: rgba(129,140,248,0.28); }
+
+    .sug-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+    .sug-wrap { display: flex; flex-wrap: wrap; gap: 7px; padding: 2px 0 6px; }
+
+    .sug-card {
+      background: var(--s2); border: 1px solid #334155; border-radius: 9px;
+      cursor: pointer; overflow: hidden; min-width: 85px;
+      transition: border-color 120ms, transform 100ms;
+    }
+    .sug-card:hover { border-color: var(--blue); transform: translateY(-2px); }
+    .sug-card:active { transform: translateY(0); }
+    .sug-word {
+      font-family: monospace; font-size: 14px; font-weight: 700; color: var(--green);
+      padding: 6px 10px 2px;
+    }
+    .sug-bar-bg { height: 3px; background: var(--s2); }
+    .sug-bar-fill { height: 3px; transition: width 300ms; }
+    .sug-meta { padding: 2px 10px 6px; font-size: 11px; color: var(--dim); }
+
+    .gen-result {
+      display: none; margin-top: 6px; padding: 7px 12px; flex-shrink: 0;
+      background: rgba(129,140,248,0.07); border: 1px solid rgba(129,140,248,0.22);
+      border-radius: 6px; font-size: 13px; color: var(--purple); font-family: monospace;
+    }
+    .no-sug { color: var(--muted); font-size: 12px; font-style: italic; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body>
+
+<!-- ══ HEADER ══ -->
+<header>
+  <div>
+    <h1>N-gram Language Model <span class="dim">— Interactive Explorer</span></h1>
+  </div>
+  <span class="badge" id="model-badge">Not trained</span>
+</header>
+
+<!-- ══ CONTROLS ══ -->
+<div class="ctrl-bar">
+  <div class="ctrl-group">
+    <span class="ctrl-label">N-gram Order</span>
+    <div class="n-selector">
+      <button class="n-btn" data-n="1">1 · unigram</button>
+      <button class="n-btn active" data-n="2">2 · bigram</button>
+      <button class="n-btn" data-n="3">3 · trigram</button>
+    </div>
+  </div>
+  <div class="ctrl-group">
+    <span class="ctrl-label">Smoothing</span>
+    <div class="toggle-wrap">
+      <label class="toggle">
+        <input type="checkbox" id="smooth-toggle" />
+        <span class="toggle-slider"></span>
+      </label>
+      <span style="font-size:12px;color:var(--dim)">Laplace (add-1)</span>
+    </div>
+  </div>
+  <button class="btn-train" id="btn-train">▶ Train Model</button>
+</div>
+
+<!-- ══ STATS ══ -->
+<div class="stats-row">
+  <div class="stat">Tokens: <span class="val" id="s-tok">—</span></div>
+  <div class="stat">Vocabulary |V|: <span class="val" id="s-voc">—</span></div>
+  <div class="stat">Unique N-grams: <span class="val" id="s-ng">—</span></div>
+  <div class="stat">Contexts: <span class="val" id="s-ctx">—</span></div>
+</div>
+
+<!-- ══ MAIN ══ -->
+<div class="main-grid">
+
+  <!-- Training text -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <span class="panel-title">Training Text</span>
+      <span class="panel-hint">Edit freely · click Train to update</span>
+    </div>
+    <div class="train-body">
+      <textarea id="training-text" spellcheck="false">A ciência de dados usa estatística e aprendizado de máquina.
+A ciência de dados usa algoritmos e dados para gerar conhecimento.
+O aprendizado de máquina aprende padrões a partir de dados.
+O aprendizado de máquina usa redes neurais e árvores de decisão.
+As redes neurais aprendem padrões complexos em dados.
+As redes neurais são usadas em visão computacional e linguagem natural.
+Os dados são o insumo fundamental da ciência de dados.
+Os dados precisam ser limpos antes do treinamento.
+O modelo aprende a partir dos dados de treinamento.
+O modelo é avaliado com dados de teste.
+A validação do modelo usa métricas como acurácia e precisão.
+A validação cruzada ajuda a evitar o sobreajuste do modelo.
+O sobreajuste ocorre quando o modelo memoriza os dados de treinamento.
+A regularização reduz o sobreajuste em modelos complexos.
+A regressão linear modela a relação entre variáveis contínuas.
+A regressão logística classifica dados em categorias discretas.
+A classificação separa dados em classes distintas.
+O algoritmo de agrupamento encontra grupos nos dados.
+A visualização de dados facilita a interpretação dos resultados.
+O cientista de dados analisa e interpreta grandes volumes de dados.</textarea>
+    </div>
+  </div>
+
+  <!-- Probability Explorer -->
+  <div class="panel">
+    <div class="panel-hdr">
+      <span class="panel-title">Probability Explorer</span>
+      <span class="panel-hint" id="prob-hint">Train to explore</span>
+    </div>
+    <div class="empty-state" id="prob-empty">
+      <div class="empty-icon">📊</div>
+      <div>Train the model to explore conditional probabilities</div>
+    </div>
+    <div class="prob-split" id="prob-split" style="display:none">
+      <div class="ctx-sidebar">
+        <div class="ctx-search-wrap">
+          <input class="ctx-search" id="ctx-search" placeholder="Search contexts…" />
+        </div>
+        <div class="ctx-list" id="ctx-list"></div>
+      </div>
+      <div class="dist-area" id="dist-area">
+        <div class="empty-state" style="flex:1;height:100%">
+          <div class="empty-icon">👈</div>
+          <div>Select a context to see its distribution</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Completion -->
+  <div class="panel full-row">
+    <div class="panel-hdr">
+      <span class="panel-title">Sentence Completion</span>
+      <span class="panel-hint" id="comp-hint">Train the model first</span>
+    </div>
+    <div class="comp-body">
+      <div class="input-row">
+        <input id="sentence-input" type="text" placeholder="Type a sentence to get word predictions…" disabled />
+        <button class="btn-sm btn-gen" id="btn-gen" style="display:none">✦ Generate</button>
+        <button class="btn-sm" id="btn-clear" style="display:none" title="Clear input">✕</button>
+      </div>
+      <div class="ctx-display" id="ctx-display">
+        <span style="color:var(--muted)">Context will appear here after training</span>
+      </div>
+      <div class="sug-scroll">
+        <div class="sug-wrap" id="sug-wrap"></div>
+      </div>
+      <div class="gen-result" id="gen-result"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══ Model ════════════════════════════════════════════════════════════════════
+
+class NGramModel {
+  constructor(n, smoothing) {
+    this.n = n;
+    this.smoothing = smoothing;
+    this.counts    = new Map(); // ctxKey -> Map(word -> count)
+    this.ctxTot    = new Map(); // ctxKey -> total
+    this.vocab     = new Set();
+    this.totalTok  = 0;
+  }
+
+  tokenize(text) {
+    const out = [];
+    for (const s of text.split(/[.!?\n]+/)) {
+      const words = s.toLowerCase().replace(/[^a-záàâãéèêíïóôõúüçñ\s']/g, '').trim().split(/\s+/).filter(w => w);
+      if (!words.length) continue;
+      for (let i = 0; i < this.n - 1; i++) out.push('<START>');
+      out.push(...words, '<END>');
+    }
+    return out;
+  }
+
+  train(text) {
+    this.counts.clear(); this.ctxTot.clear(); this.vocab.clear();
+    const tok = this.tokenize(text);
+    this.totalTok = tok.filter(t => t !== '<START>' && t !== '<END>').length;
+
+    for (let i = 0; i <= tok.length - this.n; i++) {
+      const gram = tok.slice(i, i + this.n);
+      const word = gram[gram.length - 1];
+      const ctx  = gram.slice(0, -1).join(' ');
+
+      if (!this.counts.has(ctx)) { this.counts.set(ctx, new Map()); this.ctxTot.set(ctx, 0); }
+      const m = this.counts.get(ctx);
+      m.set(word, (m.get(word) || 0) + 1);
+      this.ctxTot.set(ctx, this.ctxTot.get(ctx) + 1);
+      if (word !== '<END>' && word !== '<START>') this.vocab.add(word);
+    }
+  }
+
+  ctxKey(words) {
+    if (this.n === 1) return '';
+    const need = this.n - 1;
+    return [...Array(need).fill('<START>'), ...words].slice(-need).join(' ');
+  }
+
+  dist(ctxKey) {
+    const m     = this.counts.get(ctxKey);
+    const total = this.ctxTot.get(ctxKey) || 0;
+    const V     = this.vocab.size;
+
+    if (!m && !this.smoothing) return [];
+
+    if (this.smoothing) {
+      return [...this.vocab, '<END>'].map(w => {
+        const c = m ? (m.get(w) || 0) : 0;
+        return { word: w, count: c, total, prob: (c + 1) / (total + V) };
+      }).sort((a, b) => b.prob - a.prob);
+    }
+    return Array.from(m.entries())
+      .map(([w, c]) => ({ word: w, count: c, total, prob: c / total }))
+      .sort((a, b) => b.prob - a.prob);
+  }
+
+  predict(words, k = 10) {
+    return this.dist(this.ctxKey(words))
+      .filter(e => e.word !== '<END>' && e.word !== '<START>')
+      .slice(0, k);
+  }
+
+  generate(max = 22) {
+    const out = [];
+    let ctx = Array(Math.max(0, this.n - 1)).fill('<START>');
+    for (let i = 0; i < max; i++) {
+      const d = this.dist(ctx.join(' ')).filter(e => e.word !== '<START>');
+      if (!d.length) break;
+      const w = sample(d);
+      if (w === '<END>') break;
+      out.push(w);
+      if (this.n > 1) ctx = [...ctx, w].slice(-(this.n - 1));
+    }
+    return out.join(' ');
+  }
+}
+
+function sample(d) {
+  let r = Math.random() * d.reduce((s, e) => s + e.prob, 0);
+  for (const e of d) { r -= e.prob; if (r <= 0) return e.word; }
+  return d[0].word;
+}
+
+// ══ State ════════════════════════════════════════════════════════════════════
+
+let model = null, N = 2, smoothing = false, selCtx = null, ctxItems = [];
+
+// ══ DOM ══════════════════════════════════════════════════════════════════════
+
+const $ = id => document.getElementById(id);
+const btnTrain  = $('btn-train');
+const txtArea   = $('training-text');
+const probEmpty = $('prob-empty');
+const probSplit = $('prob-split');
+const probHint  = $('prob-hint');
+const ctxSearch = $('ctx-search');
+const ctxList   = $('ctx-list');
+const distArea  = $('dist-area');
+const sentIn    = $('sentence-input');
+const ctxDisp   = $('ctx-display');
+const sugWrap   = $('sug-wrap');
+const compHint  = $('comp-hint');
+const btnGen    = $('btn-gen');
+const btnClear  = $('btn-clear');
+const genResult = $('gen-result');
+
+// ══ N / Smoothing ═════════════════════════════════════════════════════════════
+
+document.querySelectorAll('.n-btn').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.n-btn').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  N = +b.dataset.n;
+}));
+$('smooth-toggle').addEventListener('change', e => { smoothing = e.target.checked; });
+
+// ══ Train ════════════════════════════════════════════════════════════════════
+
+btnTrain.addEventListener('click', train);
+
+function train() {
+  const text = txtArea.value.trim();
+  if (!text) return;
+
+  model = new NGramModel(N, smoothing);
+  model.train(text);
+
+  const totalNG = Array.from(model.counts.values()).reduce((s, m) => s + m.size, 0);
+  $('s-tok').textContent = model.totalTok;
+  $('s-voc').textContent = model.vocab.size;
+  $('s-ng').textContent  = totalNG;
+  $('s-ctx').textContent = model.counts.size;
+
+  const names = { 1:'Unigram', 2:'Bigram', 3:'Trigram' };
+  $('model-badge').textContent = `${names[N]} model${smoothing ? ' + Laplace' : ''}`;
+  btnTrain.textContent = '↺ Re-train';
+
+  ctxItems = Array.from(model.counts.entries())
+    .map(([k, m]) => ({ key: k, total: model.ctxTot.get(k), wc: m.size }))
+    .sort((a, b) => {
+      if (a.key === '' || a.key.startsWith('<START>')) return -1;
+      if (b.key === '' || b.key.startsWith('<START>')) return 1;
+      return a.key.localeCompare(b.key);
+    });
+
+  selCtx = null;
+  probEmpty.style.display = 'none';
+  probSplit.style.display = 'flex';
+  probHint.textContent = `${model.counts.size} contexts`;
+  renderCtxList('');
+  distArea.innerHTML = `<div class="empty-state" style="height:100%">
+    <div class="empty-icon">👈</div>
+    <div>Select a context from the list to see its conditional distribution</div>
+  </div>`;
+
+  sentIn.disabled = false;
+  sentIn.placeholder = 'Type a sentence to get word predictions…';
+  btnGen.style.display = '';
+  btnClear.style.display = '';
+  compHint.textContent = `${names[N]} model · click a suggestion to append it`;
+  updateSug();
+}
+
+// ══ Context list ══════════════════════════════════════════════════════════════
+
+ctxSearch.addEventListener('input', () => renderCtxList(ctxSearch.value.toLowerCase()));
+
+function displayCtx(key) {
+  return key === '' ? '∅  (unigram)' : key.replace(/<START>/g,'⟨START⟩').replace(/<END>/g,'⟨END⟩');
+}
+
+function renderCtxList(q) {
+  const filtered = q ? ctxItems.filter(c => c.key.includes(q)) : ctxItems;
+  ctxList.innerHTML = filtered.map(c => `
+    <div class="ctx-item${c.key === selCtx ? ' active' : ''}" data-key="${ea(c.key)}">
+      <span class="ctx-name" title="${eh(c.key)}">${eh(displayCtx(c.key))}</span>
+      <span class="ctx-cnt">${c.wc}</span>
+    </div>`).join('');
+
+  ctxList.querySelectorAll('.ctx-item').forEach(el =>
+    el.addEventListener('click', () => {
+      selCtx = el.dataset.key;
+      renderCtxList(ctxSearch.value.toLowerCase());
+      renderDist(selCtx);
+    })
+  );
+}
+
+// ══ Distribution view ════════════════════════════════════════════════════════
+
+const COLORS = ['#3b82f6','#22c55e','#f97316','#818cf8','#2dd4bf','#fbbf24','#ef4444','#94a3b8','#fb923c','#34d399'];
+
+function renderDist(key) {
+  const d     = model.dist(key);
+  const total = model.ctxTot.get(key) || 0;
+  const V     = model.vocab.size;
+  const max   = d.length ? d[0].prob : 1;
+  const names = { 1:'Unigram', 2:'Bigram', 3:'Trigram' };
+
+  let fGen, fInst;
+  if (model.n === 1) {
+    fGen  = model.smoothing ? 'P(w) = (count(w) + 1) / (N + |V|)' : 'P(w) = count(w) / N';
+    fInst = model.smoothing ? `P(w) = (count(w) + 1) / (${total} + ${V})` : `P(w) = count(w) / ${total}`;
+  } else {
+    const ck = key || '∅';
+    fGen  = model.smoothing
+      ? 'P(w | ctx) = (count(ctx,w) + 1) / (count(ctx) + |V|)'
+      : 'P(w | ctx) = count(ctx, w) / count(ctx)';
+    fInst = model.smoothing
+      ? `P(w | "${ck}") = (count("${ck}",w) + 1) / (${total} + ${V})`
+      : `P(w | "${ck}") = count("${ck}", w) / ${total}`;
+  }
+
+  const bars = d.map((e, i) => {
+    const pct   = (e.prob / max * 100).toFixed(1);
+    const color = e.word === '<END>' ? '#475569' : COLORS[i % COLORS.length];
+    const isEnd = e.word === '<END>';
+    const label = isEnd ? '⟨END⟩' : e.word;
+    const frac  = model.smoothing
+      ? `(${e.count}+1)/(${total}+${V})`
+      : `${e.count}/${total}`;
+    return `
+      <div class="dist-row">
+        <span class="dist-word${isEnd ? ' end' : ''}">${eh(label)}</span>
+        <div class="dist-bar-wrap">
+          <div class="dist-bar-bg">
+            <div class="dist-bar-fill" style="width:${pct}%;background:${color}">
+              <span class="dist-bar-lbl">${(e.prob*100).toFixed(1)}%</span>
+            </div>
+          </div>
+        </div>
+        <span class="dist-frac">${eh(frac)}</span>
+      </div>`;
+  }).join('');
+
+  const ctxLabel = key === '' ? '∅' : key.replace(/<START>/g,'⟨START⟩');
+
+  distArea.innerHTML = `
+    <div class="formula-box">
+      <div class="formula-label">Formula</div>
+      <div class="formula-gen">${eh(fGen)}</div>
+      <div class="formula-inst">${eh(fInst)}</div>
+    </div>
+    <div class="dist-heading">
+      ${names[model.n]} distribution — context:
+      <span style="color:var(--orange);font-family:monospace">"${eh(ctxLabel)}"</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:6px">count(ctx) = ${total}</span>
+    </div>
+    ${bars}`;
+}
+
+// ══ Completion ═══════════════════════════════════════════════════════════════
+
+sentIn.addEventListener('input', updateSug);
+
+btnClear.addEventListener('click', () => {
+  sentIn.value = '';
+  genResult.style.display = 'none';
+  sentIn.focus();
+  updateSug();
+});
+
+btnGen.addEventListener('click', () => {
+  if (!model) return;
+  const t = model.generate(22);
+  genResult.style.display = 'block';
+  genResult.textContent = '✦ ' + (t || '(no output — try a larger corpus)');
+});
+
+function updateSug() {
+  if (!model) return;
+  const words   = sentIn.value.toLowerCase().replace(/[^a-záàâãéèêíïóôõúüçñ\s']/g,'').trim().split(/\s+/).filter(w=>w);
+  const key     = model.ctxKey(words);
+  const ctxToks = key === '' ? [] : key.split(' ');
+
+  if (model.n === 1) {
+    ctxDisp.innerHTML = '<span style="color:var(--muted)">Unigrams — no context used</span>';
+  } else {
+    const html = ctxToks.map(t =>
+      t === '<START>'
+        ? `<span class="ctx-tok start">⟨START⟩</span>`
+        : `<span class="ctx-tok">${eh(t)}</span>`
+    ).join(' ');
+    ctxDisp.innerHTML = `<span style="color:var(--muted)">Context:</span> ${html}`;
+  }
+
+  const sugs  = model.predict(words, 10);
+  const maxP  = sugs.length ? sugs[0].prob : 1;
+  const ctxN  = model.ctxTot.get(key);
+
+  if (!sugs.length) {
+    sugWrap.innerHTML = '<span class="no-sug">No predictions for this context. Try different words or enable smoothing.</span>';
+    return;
+  }
+
+  sugWrap.innerHTML = sugs.map((s, i) => {
+    const bw    = (s.prob / maxP * 100).toFixed(1);
+    const color = COLORS[i % COLORS.length];
+    const denom = ctxN != null ? ctxN : '?';
+    return `
+      <div class="sug-card" data-word="${ea(s.word)}">
+        <div class="sug-word">${eh(s.word)}</div>
+        <div class="sug-bar-bg"><div class="sug-bar-fill" style="width:${bw}%;background:${color}"></div></div>
+        <div class="sug-meta">${(s.prob*100).toFixed(1)}% &nbsp;·&nbsp; ${s.count}/${denom}</div>
+      </div>`;
+  }).join('');
+
+  sugWrap.querySelectorAll('.sug-card').forEach(c =>
+    c.addEventListener('click', () => {
+      sentIn.value = (sentIn.value.trimEnd() + ' ' + c.dataset.word).trimStart();
+      sentIn.focus();
+      updateSug();
+    })
+  );
+}
+
+// ══ Helpers ══════════════════════════════════════════════════════════════════
+
+function eh(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ea(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ══ Boot ═════════════════════════════════════════════════════════════════════
+train();
+</script>
+</body>
+</html>

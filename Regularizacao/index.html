@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regularização — L1 e L2 com Features Polinomiais</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #5f564b;
+      --accent: #e85d04;
+      --accent-2: #0a9396;
+      --accent-3: #7b2d8b;
+      --line: #d8cfc0;
+      --ok: #3a7d44;
+      --warn: #b34a1e;
+      --shadow: 0 10px 30px rgba(38,25,12,0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans","Segoe UI",sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 10%, rgba(232,93,4,0.14), transparent 30%),
+        radial-gradient(circle at 80% 5%, rgba(10,147,150,0.16), transparent 25%),
+        linear-gradient(160deg,#f8f5ee 0%,#f5f2ea 60%,#f0e8da 100%);
+      min-height: 100vh;
+      line-height: 1.4;
+    }
+    .wrap {
+      width: min(1280px,95vw);
+      margin: 24px auto 40px;
+      display: grid;
+      gap: 16px;
+      animation: fade-up 500ms ease;
+    }
+    @keyframes fade-up {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 18px 20px;
+    }
+    .hero {
+      background:
+        linear-gradient(130deg,rgba(232,93,4,0.08),rgba(10,147,150,0.08)),
+        var(--panel);
+    }
+    h1,h2,h3 { margin:0; font-family:"IBM Plex Serif",Georgia,serif; letter-spacing:0.2px; }
+    h1 { font-size:clamp(1.3rem,3vw,2rem); }
+    h2 { font-size:clamp(1.05rem,2vw,1.3rem); margin-bottom:10px; }
+    h3 { font-size:0.95rem; color:var(--muted); font-weight:600; margin-bottom:6px; }
+    .muted { color:var(--muted); font-size:0.93rem; }
+    .note  { font-size:0.81rem; color:var(--muted); margin-top:6px; }
+    .mono  { font-family:"IBM Plex Mono",Menlo,monospace; }
+
+    .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+
+    label { font-size:0.85rem; color:var(--muted); display:grid; gap:4px; }
+    input[type="number"], select {
+      border:1px solid var(--line); border-radius:8px; padding:7px 9px;
+      background:#fff; color:var(--ink); font-family:inherit; font-size:0.9rem; width:100%;
+    }
+    button {
+      border:0; border-radius:10px; padding:10px 14px;
+      font-weight:650; cursor:pointer; font-family:inherit; font-size:0.9rem;
+      transition:transform 130ms ease, opacity 130ms ease;
+    }
+    button:hover  { transform:translateY(-1px); }
+    button:active { transform:translateY(0); }
+    .btn-main { background:var(--accent);   color:#fff; }
+    .btn-alt  { background:var(--accent-2); color:#fff; }
+    .btn-3    { background:var(--accent-3); color:#fff; }
+    .btn-soft { background:#ece4d7; color:#2d2418; }
+
+    .equation {
+      border-left:4px solid var(--accent); padding:7px 10px;
+      background:#fff7ef; border-radius:8px; margin-bottom:7px;
+      font-family:"IBM Plex Mono",Menlo,monospace;
+      font-size:0.87rem; overflow-x:auto; white-space:nowrap;
+    }
+    .equation.teal { border-color:var(--accent-2); background:#f0fafa; }
+    .equation.live {
+      border-color:var(--accent-3); background:#faf0ff;
+      white-space:normal; word-break:break-word; font-size:0.9rem;
+    }
+
+    .pills { display:grid; grid-template-columns:repeat(4,minmax(110px,1fr)); gap:10px; margin-top:8px; }
+    .pill  { border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff; font-size:0.87rem; }
+    .pill strong { display:block; font-size:0.93rem; margin-bottom:3px; }
+    .pill.ok   strong { color:var(--ok); }
+    .pill.warn strong { color:var(--warn); }
+    .pill.hl   strong { color:var(--accent-3); }
+
+    .plot {
+      width:100%; height:340px; border-radius:10px;
+      border:1px solid var(--line);
+      background:linear-gradient(180deg,#ffffff 0%,#fdf8ef 100%);
+      display:block;
+    }
+
+    .legend {
+      display:flex; gap:12px; flex-wrap:wrap;
+      margin-top:6px; font-size:0.82rem; color:var(--muted);
+    }
+    .dot  { width:10px; height:10px; border-radius:50%; display:inline-block; margin-right:4px; vertical-align:middle; }
+    .dash { display:inline-block; width:18px; height:3px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+
+    .coef-wrap { display:grid; gap:8px; margin-top:6px; max-height:320px; overflow-y:auto; }
+    .coef-row  { display:grid; grid-template-columns:100px 1fr 72px; align-items:center; gap:8px; }
+    .coef-name { font-size:0.82rem; font-family:"IBM Plex Mono",Menlo,monospace; }
+    .coef-bar-bg {
+      position:relative; height:16px; background:#ece4d7; border-radius:6px; overflow:hidden;
+    }
+    .coef-center { position:absolute; left:50%; top:0; bottom:0; width:2px; background:#ccc; transform:translateX(-50%); }
+    .coef-fill   { position:absolute; top:2px; bottom:2px; border-radius:4px; transition:width 200ms ease; }
+    .coef-fill.pos { left:50%; background:var(--accent-2); }
+    .coef-fill.neg { right:50%; background:var(--accent); }
+    .coef-val { font-size:0.79rem; font-family:"IBM Plex Mono",Menlo,monospace; text-align:right; color:var(--muted); }
+
+    table { border-collapse:collapse; width:100%; font-size:0.83rem; background:#fff; }
+    th,td { border:1px solid var(--line); padding:5px 8px; text-align:right; }
+    th { background:#f4efe5; font-weight:700; color:#3b3024; }
+    td:first-child,th:first-child { text-align:center; }
+    .table-wrap { max-height:300px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+
+    .back { font-size:0.85rem; margin-bottom:4px; }
+    .back a { color:var(--accent); text-decoration:none; font-weight:600; }
+    .back a:hover { text-decoration:underline; }
+
+    .warn-box {
+      display:none; background:#fff4f0; border:1px solid var(--warn); border-radius:8px;
+      padding:8px 12px; font-size:0.85rem; color:var(--warn); margin-top:8px;
+    }
+
+    @media (max-width:980px) {
+      .grid-2,.grid-4 { grid-template-columns:1fr; }
+      .pills { grid-template-columns:1fr 1fr; }
+    }
+    @media (max-width:620px) {
+      .grid-3 { grid-template-columns:1fr; }
+      .pills  { grid-template-columns:1fr; }
+      .plot   { height:240px; }
+    }
+  </style>
+</head>
+<body>
+<main class="wrap">
+
+  <!-- HERO -->
+  <section class="card hero">
+    <p class="back"><a href="../index.html">← Voltar ao índice</a></p>
+    <h1>Regularização em Regressão Linear: L1 (Lasso) vs L2 (Ridge)</h1>
+    <p class="muted">
+      Polinômio de alto grau treinado em um subconjunto central dos dados — veja o modelo explodir nos extremos (overfitting) e como L1/L2 controlam a complexidade.
+    </p>
+  </section>
+
+  <!-- EQUATIONS -->
+  <section class="card">
+    <h2>1) Equações</h2>
+    <div class="grid-2">
+      <div>
+        <h3>Features Polinomiais (normalizadas)</h3>
+        <div class="equation">x̂ = 2·(x − xₘᵢₙ) / (xₘₐₓ − xₘᵢₙ) − 1   →   x̂ ∈ [−1, 1]</div>
+        <div class="equation">φ(x) = [1,  x̂,  x̂²,  x̂³,  ...,  x̂ᵈ]</div>
+        <div class="equation">ŷ = θᵀφ(x) = θ₀ + θ₁x̂ + θ₂x̂² + ... + θᵈx̂ᵈ</div>
+        <div class="equation">J_MSE = (1/2m) Σᵢ (ŷᵢ − yᵢ)²</div>
+      </div>
+      <div>
+        <h3>Funções de Custo com Regularização</h3>
+        <div class="equation teal">Ridge (L2): J = J_MSE + λ Σⱼ₌₁ᵈ θⱼ²</div>
+        <div class="equation teal">Lasso (L1): J = J_MSE + λ Σⱼ₌₁ᵈ |θⱼ|</div>
+        <div class="equation">∂J/∂θ₀ = (1/m) Σ(ŷᵢ − yᵢ)                  [sem reg.]</div>
+        <div class="equation">∂J/∂θⱼ = (1/m) Σ(ŷᵢ−yᵢ)φⱼ + { 2λθⱼ (L2) | λ·sgn(θⱼ) (L1) }</div>
+        <div class="equation">θⱼ ← θⱼ − α · ∂J/∂θⱼ   [L1 usa thresholding proximal]</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTROLS -->
+  <section class="card">
+    <h2>2) Controles</h2>
+    <div class="grid-3" style="margin-bottom:12px">
+      <label>
+        Dataset
+        <select id="dsSel">
+          <option value="senoide">Senoide — y = sin(2x) + ruído</option>
+          <option value="gaussiana">Gaussiana — y = 2·e^(−0.6x²) + ruído</option>
+          <option value="tanh">Tangente hiperbólica — y = tanh(3x) + ruído</option>
+        </select>
+      </label>
+      <label>
+        Grau do polinômio (d)
+        <select id="degreeSel">
+          <option value="1">1 — linear</option>
+          <option value="2">2 — quadrático</option>
+          <option value="3">3 — cúbico</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9" selected>9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12</option>
+        </select>
+      </label>
+      <label>
+        Regularização
+        <select id="regSel">
+          <option value="none" selected>Nenhuma (sem regularização)</option>
+          <option value="L2">L2 — Ridge</option>
+          <option value="L1">L1 — Lasso (proximal GD)</option>
+        </select>
+      </label>
+    </div>
+    <div class="grid-4" style="margin-bottom:12px">
+      <label>
+        λ (força da regularização)
+        <input id="lambdaIn" type="number" value="0.1" step="0.05" min="0" />
+      </label>
+      <label>
+        α (taxa de aprendizado)
+        <input id="alphaIn" type="number" value="0.2" step="0.02" min="0.001" max="1" />
+      </label>
+      <label>
+        N passos
+        <input id="nStepsIn" type="number" value="50" step="10" min="1" />
+      </label>
+      <label style="align-self:end">
+        <button class="btn-soft" id="btnReset" style="width:100%">Resetar</button>
+      </label>
+    </div>
+    <div class="grid-3">
+      <button class="btn-main" id="btnOne">1 passo de gradiente</button>
+      <button class="btn-alt"  id="btnN"  >Rodar N passos</button>
+      <button class="btn-3"   id="btnConv">Solução Exata / Convergir</button>
+    </div>
+    <div id="warnBox" class="warn-box">
+      ⚠ Os coeficientes divergiram (NaN ou Inf). Reduza α e clique em Resetar.
+    </div>
+    <p class="note">
+      💡 <strong>Experimento 1 — Overfitting:</strong> Com "Nenhuma" regularização, clique <em>Solução Exata</em>. O polinômio interpola os 10 pontos de treino (x ∈ [−2, 2]) mas explode nos extremos onde estão os 20 pontos de teste (x ∈ [−3, 3]) — MSE Treino ≈ 0, MSE Teste altíssimo.<br>
+      <strong>Experimento 2 — Regularização:</strong> Clique <em>Resetar</em>, selecione <strong>L2 (Ridge)</strong>, clique <em>Solução Exata</em>. A curva suaviza drasticamente — Ridge penaliza coeficientes grandes que causam a explosão.<br>
+      <strong>Experimento 3 — Esparsidade (L1):</strong> Clique <em>Resetar</em>, selecione <strong>L1 (Lasso)</strong>, clique <em>Rodar N passos</em> repetidamente. Observe os coeficientes zerando gradualmente — L1 produz modelos esparsos.<br>
+      <strong>Experimento 4 — U-shape:</strong> Com "Nenhuma" e partindo de θ=0, clique <em>Rodar N passos</em> várias vezes. O MSE Teste primeiro cai (aprendendo o sinal) depois sobe (ajustando ruído).
+    </p>
+    <h3 style="margin-top:12px">Equação atual</h3>
+    <div id="eqBox" class="equation live">ŷ = 0</div>
+  </section>
+
+  <!-- PILLS -->
+  <section class="card">
+    <h2>3) Estado Atual</h2>
+    <div class="pills">
+      <div class="pill">
+        <strong>Iteração</strong>
+        <span id="pillIter" class="mono">0</span>
+      </div>
+      <div class="pill ok">
+        <strong>MSE Treino</strong>
+        <span id="pillTrain" class="mono">—</span>
+      </div>
+      <div class="pill warn">
+        <strong>MSE Teste</strong>
+        <span id="pillTest" class="mono">—</span>
+      </div>
+      <div class="pill hl">
+        <strong>Termo Reg. / J total</strong>
+        <span id="pillReg" class="mono">—</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHARTS -->
+  <section class="card grid-2">
+    <div>
+      <h2>4) Ajuste do Modelo</h2>
+      <canvas id="cvFit" class="plot" width="620" height="340"></canvas>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--accent-2)"></span>Treino x∈[−2,2] (círculos)</span>
+        <span><span class="dot" style="background:var(--accent); border-radius:2px; width:10px; height:10px"></span>Teste x∈[−3,3] (quadrados)</span>
+        <span><span class="dash" style="background:#bbb; border-top:2px dashed #bbb; height:0"></span>Função real</span>
+        <span><span class="dash" style="background:var(--accent)"></span>Modelo atual</span>
+      </div>
+      <p class="note">Sem regularização: a curva laranja escapa para fora do canvas nos extremos (overfitting). Com Ridge: permanece dentro.</p>
+    </div>
+    <div>
+      <h2>5) Evolução da Perda</h2>
+      <canvas id="cvLoss" class="plot" width="620" height="340"></canvas>
+      <div class="legend">
+        <span><span class="dash" style="background:var(--accent-2)"></span>MSE Treino</span>
+        <span><span class="dash" style="background:var(--accent)"></span>MSE Teste</span>
+        <span><span class="dash" style="background:var(--accent-3); border-top:2px dashed var(--accent-3); height:0"></span>J total (treino+reg)</span>
+      </div>
+      <p class="note">Sem reg: MSE Treino → 0 enquanto MSE Teste sobe. Com Ridge/Lasso: ambos convergem para valores próximos.</p>
+    </div>
+  </section>
+
+  <!-- COEFS + TABLE -->
+  <section class="card grid-2">
+    <div>
+      <h2>6) Coeficientes θ</h2>
+      <div id="coefWrap" class="coef-wrap">
+        <p class="muted" style="font-size:0.87rem">Clique em Rodar N passos ou Solução Exata para ver os coeficientes.</p>
+      </div>
+      <p class="note">
+        Barras normalizadas por max|θⱼ|. <span style="color:var(--accent-2)">Verde = positivo</span>,
+        <span style="color:var(--accent)">laranja = negativo</span>.
+        L1 zera coeficientes exatamente (esparsidade). L2 os encolhe mas mantém todos ativos.
+      </p>
+    </div>
+    <div>
+      <h2>7) Histórico de Iterações</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Iter</th>
+              <th>MSE Treino</th>
+              <th>MSE Teste</th>
+              <th>Termo Reg.</th>
+              <th>J Total</th>
+            </tr>
+          </thead>
+          <tbody id="tblBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ══════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════
+function seededRng(seed) {
+  let s = seed % 2147483647; if (s <= 0) s += 2147483646;
+  return () => { s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+}
+function dot(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+function linspace(a, b, n) { const r = []; for (let i = 0; i < n; i++) r.push(a + (b - a) * i / (n - 1)); return r; }
+
+// ══════════════════════════════════════════════
+//  DATASETS
+// ══════════════════════════════════════════════
+function makeDataset(kind) {
+  const seeds = { senoide: 42, gaussiana: 7, tanh: 99 };
+  const rand = seededRng(seeds[kind] || 42);
+
+  // Training: 10 points clustered in the CENTER x ∈ [−2, 2].
+  // The polynomial must extrapolate to x ∈ [−3,3] where test points live.
+  // This guarantees the Runge phenomenon: wild oscillation at the extremes.
+  const noiseScale = { senoide: 0.9, gaussiana: 0.6, tanh: 0.5 };
+  const ns = noiseScale[kind] || 0.9;
+
+  const trainPts = [];
+  for (let i = 0; i < 10; i++) {
+    const x = -2 + (i + rand()) * 0.4;
+    const noise = (rand() - 0.5) * 2 * ns;
+    let y;
+    if (kind === 'senoide')        y = Math.sin(2 * x) + noise;
+    else if (kind === 'gaussiana') y = 2 * Math.exp(-0.6 * x * x) + noise;
+    else                           y = Math.tanh(3 * x) + noise;
+    trainPts.push([x, y]);
+  }
+
+  // Test: 20 points covering the FULL range [−3, 3].
+  // ~6 of these fall in [−3,−2] ∪ [2,3] where extrapolation is catastrophic.
+  const testPts = [];
+  for (let i = 0; i < 20; i++) {
+    const x = rand() * 6 - 3;
+    const noise = (rand() - 0.5) * 2 * ns;
+    let y;
+    if (kind === 'senoide')        y = Math.sin(2 * x) + noise;
+    else if (kind === 'gaussiana') y = 2 * Math.exp(-0.6 * x * x) + noise;
+    else                           y = Math.tanh(3 * x) + noise;
+    testPts.push([x, y]);
+  }
+
+  const trueF = kind === 'senoide'   ? x => Math.sin(2 * x)
+              : kind === 'gaussiana' ? x => 2 * Math.exp(-0.6 * x * x)
+              :                        x => Math.tanh(3 * x);
+  return {
+    X_tr: trainPts.map(p => p[0]),
+    y_tr: trainPts.map(p => p[1]),
+    X_te: testPts.map(p => p[0]),
+    y_te: testPts.map(p => p[1]),
+    xMin: -3, xMax: 3, trueF
+  };
+}
+
+// ══════════════════════════════════════════════
+//  POLYNOMIAL FEATURES
+// ══════════════════════════════════════════════
+function polyFeat(x, d, xMin, xMax) {
+  const xn = 2 * (x - xMin) / (xMax - xMin) - 1;
+  const phi = [1]; let xp = 1;
+  for (let j = 1; j <= d; j++) { xp *= xn; phi.push(xp); }
+  return phi;
+}
+function buildPhi(Xarr, d, xMin, xMax) { return Xarr.map(x => polyFeat(x, d, xMin, xMax)); }
+
+// ══════════════════════════════════════════════
+//  GRADIENT + PROXIMAL DESCENT
+// ══════════════════════════════════════════════
+function predict(Phi, theta) { return Phi.map(phi => dot(phi, theta)); }
+
+function mse(yhat, y) {
+  let s = 0; for (let i = 0; i < y.length; i++) s += (yhat[i] - y[i]) ** 2;
+  return s / (2 * y.length);
+}
+
+function regTerm(theta, lambda, regType) {
+  if (!lambda || regType === 'none') return 0;
+  let s = 0;
+  for (let j = 1; j < theta.length; j++)
+    s += regType === 'L2' ? theta[j] * theta[j] : Math.abs(theta[j]);
+  return lambda * s;
+}
+
+function gradStep(theta, Phi, y, alpha, lambda, regType) {
+  const m = y.length, yhat = predict(Phi, theta);
+  const newT = [...theta];
+  for (let j = 0; j < theta.length; j++) {
+    let g = 0;
+    for (let i = 0; i < m; i++) g += (yhat[i] - y[i]) * Phi[i][j];
+    g /= m;
+    // L2: add ridge gradient (analytical, no proximal step needed)
+    if (j > 0 && regType === 'L2') g += 2 * lambda * theta[j];
+    newT[j] = theta[j] - alpha * g;
+  }
+  // L1: proximal gradient — soft thresholding for true sparsity
+  if (regType === 'L1') {
+    const thresh = alpha * lambda;
+    for (let j = 1; j < newT.length; j++) {
+      newT[j] = Math.sign(newT[j]) * Math.max(0, Math.abs(newT[j]) - thresh);
+    }
+  }
+  return newT;
+}
+
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+let S = {
+  ds: null, degree: 9, regType: 'none', lambda: 1.0, alpha: 0.2,
+  theta: [], Phi_tr: [], Phi_te: [], history: [], diverged: false
+};
+
+function readInputs() {
+  S.lambda  = Math.max(0, +document.getElementById('lambdaIn').value || 0);
+  S.alpha   = Math.max(1e-4, +document.getElementById('alphaIn').value || 0.2);
+  S.regType = document.getElementById('regSel').value;
+}
+
+function init() {
+  S.ds      = makeDataset(document.getElementById('dsSel').value);
+  S.degree  = +document.getElementById('degreeSel').value;
+  readInputs();
+  S.theta   = new Array(S.degree + 1).fill(0);
+  S.Phi_tr  = buildPhi(S.ds.X_tr, S.degree, S.ds.xMin, S.ds.xMax);
+  S.Phi_te  = buildPhi(S.ds.X_te, S.degree, S.ds.xMin, S.ds.xMax);
+  S.history = [];
+  S.diverged = false;
+  document.getElementById('warnBox').style.display = 'none';
+  recordHistory();
+  renderAll();
+}
+
+function recordHistory() {
+  const yhat_tr = predict(S.Phi_tr, S.theta);
+  const yhat_te = predict(S.Phi_te, S.theta);
+  const trainMSE = mse(yhat_tr, S.ds.y_tr);
+  const testMSE  = mse(yhat_te, S.ds.y_te);
+  const reg      = regTerm(S.theta, S.lambda, S.regType);
+  S.history.push({ iter: S.history.length, trainMSE, testMSE, reg, J: trainMSE + reg });
+}
+
+function doSteps(n) {
+  if (S.diverged) return;
+  readInputs();
+  for (let i = 0; i < n; i++) {
+    S.theta = gradStep(S.theta, S.Phi_tr, S.ds.y_tr, S.alpha, S.lambda, S.regType);
+    if (S.theta.some(v => !isFinite(v))) {
+      S.diverged = true;
+      document.getElementById('warnBox').style.display = 'block';
+      S.theta = new Array(S.degree + 1).fill(0);
+      break;
+    }
+    recordHistory();
+  }
+  renderAll();
+}
+
+// ══════════════════════════════════════════════
+//  ANALYTICAL SOLUTION (Normal Equations / Ridge)
+// ══════════════════════════════════════════════
+function solveAnalytical(Phi, y, lambda, regType) {
+  const n = Phi[0].length, m = y.length;
+  const A = Array.from({length: n}, (_, r) =>
+    Array.from({length: n}, (_, c) =>
+      Phi.reduce((s, phi) => s + phi[r] * phi[c], 0)));
+  const b = Array.from({length: n}, (_, j) =>
+    Phi.reduce((s, phi, i) => s + phi[j] * y[i], 0));
+  if (regType === 'L2' && lambda > 0)
+    for (let j = 1; j < n; j++) A[j][j] += 2 * lambda * m;
+  // Gauss-Jordan with partial pivoting
+  const aug = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let mx = col;
+    for (let row = col + 1; row < n; row++)
+      if (Math.abs(aug[row][col]) > Math.abs(aug[mx][col])) mx = row;
+    [aug[col], aug[mx]] = [aug[mx], aug[col]];
+    if (Math.abs(aug[col][col]) < 1e-12) continue;
+    const d = aug[col][col];
+    for (let j = col; j <= n; j++) aug[col][j] /= d;
+    for (let row = 0; row < n; row++) {
+      if (row === col) continue;
+      const f = aug[row][col];
+      for (let j = col; j <= n; j++) aug[row][j] -= f * aug[col][j];
+    }
+  }
+  return aug.map(r => r[n]);
+}
+
+function doConverge() {
+  if (S.diverged) return;
+  readInputs();
+  if (S.regType !== 'L1') {
+    S.theta = solveAnalytical(S.Phi_tr, S.ds.y_tr, S.lambda, S.regType);
+    if (S.theta.some(v => !isFinite(v))) {
+      S.diverged = true;
+      document.getElementById('warnBox').style.display = 'block';
+      S.theta = new Array(S.degree + 1).fill(0);
+    }
+    recordHistory();
+    renderAll();
+    return;
+  }
+  // L1: proximal gradient descent until convergence
+  let stall = 0;
+  let prevJ = S.history.length ? S.history[S.history.length - 1].J : Infinity;
+  for (let i = 0; i < 30000; i++) {
+    S.theta = gradStep(S.theta, S.Phi_tr, S.ds.y_tr, S.alpha, S.lambda, S.regType);
+    if (S.theta.some(v => !isFinite(v))) {
+      S.diverged = true;
+      document.getElementById('warnBox').style.display = 'block';
+      S.theta = new Array(S.degree + 1).fill(0);
+      break;
+    }
+    recordHistory();
+    const currJ = S.history[S.history.length - 1].J;
+    if (Math.abs(prevJ - currJ) < 1e-8) { if (++stall > 50) break; } else stall = 0;
+    prevJ = currJ;
+  }
+  renderAll();
+}
+
+// ══════════════════════════════════════════════
+//  UNICODE HELPERS
+// ══════════════════════════════════════════════
+const SUPS = ['', '', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹', '¹⁰', '¹¹', '¹²'];
+const SUBS = ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉', '₁₀', '₁₁', '₁₂'];
+function featLabel(j) {
+  if (j === 0) return '(viés)';
+  if (j === 1) return '(x̂)';
+  return '(x̂' + (SUPS[j] || '^' + j) + ')';
+}
+
+// ══════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════
+function renderAll() {
+  renderPills();
+  renderEquation();
+  renderFit();
+  renderLoss();
+  renderCoefs();
+  renderTable();
+}
+
+function renderPills() {
+  const h = S.history[S.history.length - 1];
+  document.getElementById('pillIter').textContent  = h.iter;
+  document.getElementById('pillTrain').textContent = h.trainMSE.toFixed(4);
+  document.getElementById('pillTest').textContent  = h.testMSE.toFixed(4);
+  if (S.regType === 'none') {
+    document.getElementById('pillReg').textContent = '—';
+  } else {
+    document.getElementById('pillReg').textContent = h.reg.toFixed(4) + ' / ' + h.J.toFixed(4);
+  }
+}
+
+function renderEquation() {
+  const parts = [];
+  for (let j = 0; j < S.theta.length; j++) {
+    const v = S.theta[j];
+    if (Math.abs(v) < 5e-5) continue;
+    const feat = j === 0 ? '' : j === 1 ? '·x̂' : '·x̂' + (SUPS[j] || '^' + j);
+    const sign = parts.length === 0 ? (v < 0 ? '−' : '') : (v < 0 ? ' − ' : ' + ');
+    parts.push(`${sign}${Math.abs(v).toFixed(3)}${feat}`);
+  }
+  document.getElementById('eqBox').textContent = 'ŷ = ' + (parts.length ? parts.join('') : '0');
+}
+
+function renderCoefs() {
+  const maxAbs = Math.max(1e-6, ...S.theta.map(v => Math.abs(v)));
+  document.getElementById('coefWrap').innerHTML = S.theta.map((v, j) => {
+    const pct = Math.min(48, (Math.abs(v) / maxAbs) * 48).toFixed(1);
+    const fill = v >= 0
+      ? `<div class="coef-fill pos" style="width:${pct}%"></div>`
+      : `<div class="coef-fill neg" style="width:${pct}%"></div>`;
+    const nearZero = Math.abs(v) < 5e-5 ? ' style="opacity:0.3"' : '';
+    return `<div class="coef-row"${nearZero}>
+      <span class="coef-name">θ${SUBS[j] || j} ${featLabel(j)}</span>
+      <div class="coef-bar-bg"><div class="coef-center"></div>${fill}</div>
+      <span class="coef-val">${v.toFixed(3)}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderTable() {
+  const rows = S.history.slice(-150);
+  document.getElementById('tblBody').innerHTML = rows.map(h => `<tr>
+    <td>${h.iter}</td>
+    <td>${h.trainMSE.toFixed(4)}</td>
+    <td>${h.testMSE.toFixed(4)}</td>
+    <td>${h.reg.toFixed(4)}</td>
+    <td>${h.J.toFixed(4)}</td>
+  </tr>`).join('');
+  const wrap = document.getElementById('tblBody').closest('.table-wrap');
+  if (wrap) wrap.scrollTop = wrap.scrollHeight;
+}
+
+// ──────────────────────────────────────────────
+//  FIT CANVAS
+//  Y-range is fixed to the DATA extent, NOT the polynomial.
+//  When the model overfits, the polynomial shoots off the canvas — that IS the visual.
+// ──────────────────────────────────────────────
+function renderFit() {
+  const cv  = document.getElementById('cvFit');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth * dpr || 620;
+  const H = cv.clientHeight * dpr || 340;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+  const pad = { t: 20, r: 20, b: 32, l: 44 };
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+
+  // Y-range: anchored to data + true function. Polynomial is allowed to exceed this.
+  const curveXs = linspace(S.ds.xMin, S.ds.xMax, 300);
+  const dataY = [
+    ...S.ds.y_tr, ...S.ds.y_te,
+    ...curveXs.map(S.ds.trueF)
+  ];
+  let yMin = Math.min(...dataY) - 0.4;
+  let yMax = Math.max(...dataY) + 0.4;
+  // Ensure some minimum span
+  const span = yMax - yMin;
+  if (span < 1) { yMin -= (1 - span) / 2; yMax += (1 - span) / 2; }
+
+  const toX = v => pad.l + (v - S.ds.xMin) / (S.ds.xMax - S.ds.xMin) * pw;
+  const toY = v => pad.t + (1 - (v - yMin) / (yMax - yMin)) * ph;
+
+  // Training zone band
+  const trLeft  = toX(-2), trRight = toX(2);
+  ctx.fillStyle = 'rgba(10,147,150,0.04)';
+  ctx.fillRect(trLeft, pad.t, trRight - trLeft, ph);
+
+  // Grid & axes
+  ctx.strokeStyle = '#ece4d7'; ctx.lineWidth = 1;
+  const yStep = (yMax - yMin) > 8 ? 2 : 1;
+  for (let y = Math.ceil(yMin); y <= Math.floor(yMax); y += yStep) {
+    const gy = toY(y);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l + pw, gy); ctx.stroke();
+    ctx.fillStyle = '#aaa'; ctx.font = `${9 * dpr}px IBM Plex Mono,monospace`;
+    ctx.textAlign = 'right'; ctx.fillText(y, pad.l - 4, gy + 3);
+  }
+  const y0 = toY(0);
+  if (y0 > pad.t && y0 < pad.t + ph) {
+    ctx.beginPath(); ctx.strokeStyle = '#ccc'; ctx.lineWidth = 1.5;
+    ctx.moveTo(pad.l, y0); ctx.lineTo(pad.l + pw, y0); ctx.stroke();
+  }
+  for (let x = -3; x <= 3; x++) {
+    ctx.fillStyle = '#aaa'; ctx.font = `${9 * dpr}px IBM Plex Mono,monospace`;
+    ctx.textAlign = 'center'; ctx.fillText(x, toX(x), H - 4);
+  }
+
+  // Clip model curve to canvas + small bleed so broken paths look right
+  const BLEED = 12 * dpr;
+
+  // True function (dashed grey)
+  ctx.save(); ctx.beginPath();
+  ctx.rect(pad.l, pad.t - BLEED, pw, ph + 2 * BLEED);
+  ctx.clip();
+  ctx.beginPath(); ctx.setLineDash([5 * dpr, 4 * dpr]);
+  ctx.strokeStyle = '#bbb'; ctx.lineWidth = 1.5 * dpr;
+  curveXs.forEach((x, i) => {
+    const cy = toY(S.ds.trueF(x));
+    i === 0 ? ctx.moveTo(toX(x), cy) : ctx.lineTo(toX(x), cy);
+  });
+  ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+
+  // Fitted polynomial (solid orange) — draws into bleed zone, breaks when far off
+  ctx.save(); ctx.beginPath();
+  ctx.rect(pad.l - 2, pad.t - BLEED * 3, pw + 4, ph + 6 * BLEED);
+  ctx.clip();
+  ctx.beginPath(); ctx.strokeStyle = '#e85d04'; ctx.lineWidth = 2.5 * dpr;
+  let started = false;
+  curveXs.forEach(x => {
+    const raw = dot(polyFeat(x, S.degree, S.ds.xMin, S.ds.xMax), S.theta);
+    if (!isFinite(raw)) { started = false; return; }
+    const cy = toY(raw);
+    // Break path if too far off canvas (prevents long off-screen lines)
+    if (cy < pad.t - BLEED * 6 || cy > pad.t + ph + BLEED * 6) { started = false; return; }
+    if (!started) { ctx.moveTo(toX(x), cy); started = true; }
+    else ctx.lineTo(toX(x), cy);
+  });
+  ctx.stroke(); ctx.restore();
+
+  // Train points (circles, teal)
+  S.ds.X_tr.forEach((x, i) => {
+    const cx = toX(x), cy = toY(S.ds.y_tr[i]);
+    ctx.beginPath(); ctx.arc(cx, cy, 4 * dpr, 0, 2 * Math.PI);
+    ctx.fillStyle = '#0a9396'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * dpr;
+    ctx.fill(); ctx.stroke();
+  });
+
+  // Test points (squares, orange)
+  S.ds.X_te.forEach((x, i) => {
+    const cx = toX(x), cy = toY(S.ds.y_te[i]);
+    if (cy < pad.t - 10 * dpr || cy > pad.t + ph + 10 * dpr) return;
+    const s = 4 * dpr;
+    ctx.fillStyle = '#e85d04'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * dpr;
+    ctx.fillRect(cx - s, cy - s, 2 * s, 2 * s);
+    ctx.strokeRect(cx - s, cy - s, 2 * s, 2 * s);
+  });
+}
+
+// ──────────────────────────────────────────────
+//  LOSS CANVAS
+// ──────────────────────────────────────────────
+function renderLoss() {
+  const cv  = document.getElementById('cvLoss');
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth * dpr || 620;
+  const H = cv.clientHeight * dpr || 340;
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+  if (S.history.length < 2) {
+    ctx.fillStyle = '#bbb'; ctx.font = `${12 * dpr}px IBM Plex Sans,sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.fillText('Adicione passos ou clique Solução Exata para ver a evolução', W / 2, H / 2);
+    return;
+  }
+
+  const pad = { t: 20, r: 20, b: 36, l: 60 };
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+
+  // Cap y-range to prevent extreme divergence from dominating the chart
+  const vals = S.history.flatMap(h => [h.trainMSE, h.testMSE, h.J])
+    .filter(v => isFinite(v) && v >= 0);
+  const rawMax = Math.max(...vals);
+  // Cap at 5× the initial test MSE so the U-shape is clearly visible
+  const initTest = S.history[0].testMSE;
+  const capAt = Math.min(rawMax, Math.max(initTest * 5, 5)) * 1.1;
+  const yMax = capAt || 1;
+
+  const toX = i => pad.l + i / (S.history.length - 1) * pw;
+  const toY = v => pad.t + (1 - Math.min(Math.max(v, 0) / yMax, 1)) * ph;
+
+  // Grid
+  ctx.strokeStyle = '#ece4d7'; ctx.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) {
+    const v = yMax * k / 4;
+    const gy = toY(v);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l + pw, gy); ctx.stroke();
+    ctx.fillStyle = '#aaa'; ctx.font = `${9 * dpr}px IBM Plex Mono,monospace`;
+    ctx.textAlign = 'right'; ctx.fillText(v.toFixed(2), pad.l - 4, gy + 3);
+  }
+
+  const series = [
+    { key: 'trainMSE', color: '#0a9396', dash: [] },
+    { key: 'testMSE',  color: '#e85d04', dash: [] },
+    { key: 'J',        color: '#7b2d8b', dash: [6 * dpr, 4 * dpr] },
+  ];
+  for (const s of series) {
+    ctx.beginPath(); ctx.strokeStyle = s.color; ctx.lineWidth = 2 * dpr;
+    ctx.setLineDash(s.dash);
+    let moved = false;
+    S.history.forEach((h, i) => {
+      const v = h[s.key];
+      if (!isFinite(v) || v < 0) { moved = false; return; }
+      const x = toX(i), y = toY(v);
+      if (!moved) { ctx.moveTo(x, y); moved = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // X-axis ticks
+  const tickStep = Math.max(1, Math.floor(S.history.length / 6));
+  ctx.fillStyle = '#888'; ctx.font = `${9 * dpr}px IBM Plex Mono,monospace`; ctx.textAlign = 'center';
+  for (let i = 0; i < S.history.length; i += tickStep)
+    ctx.fillText(S.history[i].iter, toX(i), H - 6);
+  ctx.fillText('Iteração', pad.l + pw / 2, H - 0);
+}
+
+// ══════════════════════════════════════════════
+//  EVENTS
+// ══════════════════════════════════════════════
+document.getElementById('btnOne').addEventListener('click',  () => doSteps(1));
+document.getElementById('btnN').addEventListener('click',    () => doSteps(+document.getElementById('nStepsIn').value || 50));
+document.getElementById('btnConv').addEventListener('click', doConverge);
+document.getElementById('btnReset').addEventListener('click', init);
+document.getElementById('dsSel').addEventListener('change', init);
+document.getElementById('degreeSel').addEventListener('change', init);
+
+window.addEventListener('resize', () => { if (S.history.length) renderAll(); });
+
+// Boot: starts at theta=0 (flat line). User must run steps or click Convergir.
+init();
+</script>
+</body>
+</html>
